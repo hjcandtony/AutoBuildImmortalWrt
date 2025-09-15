@@ -235,13 +235,20 @@ jobs:
       - name: 处理是否替换 banner 信息
         if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
         run: |
-          # 使用ImageBuilder构建 且用户勾选了替换banner时
           cp n1/99-banner.sh files/etc/uci-defaults/
       
+      - name: 集成 OpenAppFilter 源码
+        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+        run: |
+          echo "✅ 开始下载 OpenAppFilter 源码"
+          mkdir -p ${{ github.workspace }}/package
+          git clone https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
+          echo "✅ 已下载 OpenAppFilter 源码"
+
       - name: Build Rootfs for Radxa and Other Boards (ImmortalWrt)
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
-          echo "✅ 使用 ImageBuilder 构建 rootfs"
+          echo "✅ 使用 ImageBuilder 构建 rootfs（含 OpenAppFilter）"
           profiles="generic"
           include_docker="${{ github.event.inputs.include_docker }}"
           rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
@@ -260,12 +267,58 @@ jobs:
               -v "${{ github.workspace }}/n1/banner:/home/build/immortalwrt/files/mnt/banner" \
               -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
               -v "${{ github.workspace }}/n1/build.sh:/home/build/immortalwrt/build.sh" \
+              -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
               -e PROFILE=$profile \
               -e INCLUDE_DOCKER=$include_docker \
               -e ROOTFS_PARTSIZE=$rootfs_partsize \
+              -e CONFIG_PACKAGE_luci-app-oaf=y \
+              -e CONFIG_PACKAGE_open-app-filter=y \
+              -e CONFIG_PACKAGE_oaf=y \
+              -e CONFIG_PACKAGE_kmod-oaf=y \
               immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash /home/build/immortalwrt/build.sh
           done
           
+      - name: 单独编译 OpenAppFilter 插件
+        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+        run: |
+          echo "✅ 开始单独编译 OpenAppFilter 插件"
+          mkdir -p ${{ github.workspace }}/openappfilter_ipk
+          
+          docker run --rm -i \
+            --user root \
+            -v "${{ github.workspace }}/openappfilter_ipk:/output" \
+            -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
+            -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
+            -e CONFIG_PACKAGE_luci-app-oaf=y \
+            -e CONFIG_PACKAGE_open-app-filter=y \
+            -e CONFIG_PACKAGE_oaf=y \
+            -e CONFIG_PACKAGE_kmod-oaf=y \
+            immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
+              cd /home/build/immortalwrt && \
+              make package/luci-app-oaf/compile V=s && \
+              make package/open-app-filter/compile V=s && \
+              make package/oaf/compile V=s && \
+              make package/kmod-oaf/compile V=s && \
+              find bin/packages/armsr/armv8/ -name 'luci-app-oaf*.ipk' -exec cp {} /output/ \; && \
+              find bin/packages/armsr/armv8/ -name 'open-app-filter*.ipk' -exec cp {} /output/ \; && \
+              find bin/packages/armsr/armv8/ -name 'oaf*.ipk' -exec cp {} /output/ \; && \
+              find bin/packages/armsr/armv8/ -name 'kmod-oaf*.ipk' -exec cp {} /output/ \;
+            "
+          
+          echo "✅ 编译完成的 OpenAppFilter 相关文件："
+          ls -l ${{ github.workspace }}/openappfilter_ipk/
+          
+          if ls ${{ github.workspace }}/openappfilter_ipk/kmod-oaf*.ipk 1> /dev/null 2>&1; then
+            echo "✅ 成功生成 kmod-oaf 内核模块文件"
+          else
+            echo "⚠️ 未找到 kmod-oaf 内核模块文件，可能编译存在问题"
+          fi
+          
+          if ! ls ${{ github.workspace }}/openappfilter_ipk/*.ipk 1> /dev/null 2>&1; then
+            echo "❌ OpenAppFilter 插件编译失败，未生成任何 .ipk 文件"
+            exit 1
+          fi
+
       - name: Download prebuilt rootfs.tar.gz
         if: ${{ github.event.inputs.skip_imagebuilder == 'true' }}
         run: |
@@ -300,26 +353,4 @@ jobs:
         id: rename
         run: |
           MODEL=${{ inputs.openwrt_board }}
-          for FILE in ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz; do
-            echo "Processing file: $FILE"
-            FILENAME=$(basename "$FILE")
-            KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+') 
-            if [[ -z "$KERNEL_VERSION" ]]; then
-              echo "Skipped: Could not extract kernel version from $FILENAME"
-              continue
-            fi
-            NEW_NAME="immortalwrt-24.10.2-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
-            mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/$NEW_NAME"
-            echo "Renamed to: $NEW_NAME"
-          done
-
-      - name: Upload firmware to GitHub Releases
-        uses: softprops/action-gh-release@v2.2.1
-        with:
-          tag_name: ophub
-          name: ImmortalWrt for boxs
-          body_path: ${{ github.workspace }}/n1/box.md
-          files: |
-            ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          for
