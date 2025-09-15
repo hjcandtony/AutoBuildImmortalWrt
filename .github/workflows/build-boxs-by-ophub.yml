@@ -237,27 +237,15 @@ jobs:
         run: |
           cp n1/99-banner.sh files/etc/uci-defaults/
       
-      - name: 集成 OpenAppFilter 源码与编译选项
+      - name: 集成 OpenAppFilter 源码
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
-          echo "✅ 开始配置 OpenAppFilter 编译环境"
+          echo "✅ 开始下载 OpenAppFilter 源码"
+          # 创建 package 目录（若不存在）
           mkdir -p ${{ github.workspace }}/package
+          # 下载 OpenAppFilter 源码到 package 目录
           git clone https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
           echo "✅ 已下载 OpenAppFilter 源码"
-          
-          # 在容器内执行配置命令，确保环境正确
-          docker run --rm -i \
-            --user root \
-            -v "${{ github.workspace }}:/home/build/immortalwrt" \
-            immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
-              cd /home/build/immortalwrt/n1 && \
-              echo 'CONFIG_PACKAGE_luci-app-oaf=y' >> imm.config && \
-              echo 'CONFIG_PACKAGE_open-app-filter=y' >> imm.config && \
-              echo 'CONFIG_PACKAGE_oaf=y' >> imm.config && \
-              echo 'CONFIG_PACKAGE_kmod-oaf=y' >> imm.config && \
-              make defconfig
-            "
-          echo "✅ 已在容器内开启 OpenAppFilter 编译选项"
 
       - name: Build Rootfs for Radxa and Other Boards (ImmortalWrt)
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
@@ -285,6 +273,11 @@ jobs:
               -e PROFILE=$profile \
               -e INCLUDE_DOCKER=$include_docker \
               -e ROOTFS_PARTSIZE=$rootfs_partsize \
+              # 传递 OpenAppFilter 编译选项
+              -e CONFIG_PACKAGE_luci-app-oaf=y \
+              -e CONFIG_PACKAGE_open-app-filter=y \
+              -e CONFIG_PACKAGE_oaf=y \
+              -e CONFIG_PACKAGE_kmod-oaf=y \
               immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash /home/build/immortalwrt/build.sh
           done
           
@@ -292,34 +285,46 @@ jobs:
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           echo "✅ 开始单独编译 OpenAppFilter 插件"
+          # 创建插件输出目录
           mkdir -p ${{ github.workspace }}/openappfilter_ipk
           
+          # 进入容器编译插件（复用 ImageBuilder 环境确保依赖一致）
           docker run --rm -i \
             --user root \
             -v "${{ github.workspace }}/openappfilter_ipk:/output" \
             -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
             -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
+            # 传递 OpenAppFilter 编译选项
+            -e CONFIG_PACKAGE_luci-app-oaf=y \
+            -e CONFIG_PACKAGE_open-app-filter=y \
+            -e CONFIG_PACKAGE_oaf=y \
+            -e CONFIG_PACKAGE_kmod-oaf=y \
             immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
               cd /home/build/immortalwrt && \
+              # 编译所有相关组件（V=s 显示详细日志）
               make package/luci-app-oaf/compile V=s && \
               make package/open-app-filter/compile V=s && \
               make package/oaf/compile V=s && \
               make package/kmod-oaf/compile V=s && \
+              # 查找并复制所有相关 .ipk 文件到输出目录
               find bin/packages/armsr/armv8/ -name 'luci-app-oaf*.ipk' -exec cp {} /output/ \; && \
               find bin/packages/armsr/armv8/ -name 'open-app-filter*.ipk' -exec cp {} /output/ \; && \
               find bin/packages/armsr/armv8/ -name 'oaf*.ipk' -exec cp {} /output/ \; && \
               find bin/packages/armsr/armv8/ -name 'kmod-oaf*.ipk' -exec cp {} /output/ \;
             "
           
+          # 检查插件是否生成成功
           echo "✅ 编译完成的 OpenAppFilter 相关文件："
           ls -l ${{ github.workspace }}/openappfilter_ipk/
           
+          # 验证是否生成了 kmod-oaf 文件
           if ls ${{ github.workspace }}/openappfilter_ipk/kmod-oaf*.ipk 1> /dev/null 2>&1; then
             echo "✅ 成功生成 kmod-oaf 内核模块文件"
           else
             echo "⚠️ 未找到 kmod-oaf 内核模块文件，可能编译存在问题"
           fi
           
+          # 如果没有生成任何插件文件则报错
           if ! ls ${{ github.workspace }}/openappfilter_ipk/*.ipk 1> /dev/null 2>&1; then
             echo "❌ OpenAppFilter 插件编译失败，未生成任何 .ipk 文件"
             exit 1
@@ -338,60 +343,4 @@ jobs:
         run: |
           ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" | head -n1)
           echo "✅ Found: $ROOTFS_FILE"
-          if [ ! -f "$ROOTFS_FILE" ]; then
-            echo "❌ 找不到 rootfs.tar.gz 文件"
-            exit 1
-          fi
-          echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
-
-      - name: Package armsr-armv8 as ImmortalWrt by ophub
-        uses: ophub/amlogic-s9xxx-openwrt@main
-        with:
-          openwrt_path: ${{ steps.find_rootfs.outputs.file }}
-          openwrt_board: ${{ inputs.openwrt_board }}
-          openwrt_kernel: ${{ inputs.openwrt_kernel }}
-          auto_kernel: true
-          kernel_repo: "ophub/kernel"
-          kernel_usage: flippy
-          builder_name: ${{ inputs.builder_name }}
-
-      - name: Rename .img.gz files
-        id: rename
-        run: |
-          MODEL=${{ inputs.openwrt_board }}
-          for FILE in ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz; do
-            FILENAME=$(basename "$FILE")
-            KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+') 
-            if [[ -z "$KERNEL_VERSION" ]]; then
-              echo "Skipped: Could not extract kernel version from $FILENAME"
-              continue
-            fi
-            NEW_NAME="immortalwrt-24.10.2-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
-            mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/$NEW_NAME"
-            echo "Renamed to: $NEW_NAME"
-          done
-
-      - name: Upload firmware and OpenAppFilter to GitHub Releases
-        uses: softprops/action-gh-release@v2.2.1
-        with:
-          tag_name: ophub
-          name: ImmortalWrt for boxs (含 OpenAppFilter 插件)
-          body: |
-            ## 构建信息
-            - 设备型号：${{ inputs.openwrt_board }}
-            - 内核版本：${{ inputs.openwrt_kernel }}（系统自动适配）
-            - 作者：${{ inputs.builder_name }}
-            - 集成组件：Docker(${{ inputs.include_docker }})、Store(${{ inputs.enable_store }})、OpenAppFilter
-            
-            ## 文件说明
-            1. `.img.gz`：固件镜像（已集成 OpenAppFilter）
-            2. `.ipk`：OpenAppFilter 相关插件包，包括：
-               - luci-app-oaf：Web界面组件
-               - open-app-filter：应用过滤服务
-               - oaf：核心功能组件
-               - kmod-oaf：内核模块（关键组件）
-          files: |
-            ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz
-            ${{ github.workspace }}/openappfilter_ipk/*.ipk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if
