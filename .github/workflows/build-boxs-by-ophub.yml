@@ -241,9 +241,7 @@ jobs:
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           echo "✅ 开始下载 OpenAppFilter 源码"
-          # 创建 package 目录（若不存在）
           mkdir -p ${{ github.workspace }}/package
-          # 下载 OpenAppFilter 源码到 package 目录
           git clone https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
           echo "✅ 已下载 OpenAppFilter 源码"
 
@@ -260,6 +258,7 @@ jobs:
           for profile in "${profile_array[@]}"; do
             echo "Building for profile: $profile"
             
+            # 确保 docker run 命令有正确的镜像参数
             docker run --rm -i \
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
@@ -273,7 +272,6 @@ jobs:
               -e PROFILE=$profile \
               -e INCLUDE_DOCKER=$include_docker \
               -e ROOTFS_PARTSIZE=$rootfs_partsize \
-              # 传递 OpenAppFilter 编译选项
               -e CONFIG_PACKAGE_luci-app-oaf=y \
               -e CONFIG_PACKAGE_open-app-filter=y \
               -e CONFIG_PACKAGE_oaf=y \
@@ -285,46 +283,38 @@ jobs:
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           echo "✅ 开始单独编译 OpenAppFilter 插件"
-          # 创建插件输出目录
           mkdir -p ${{ github.workspace }}/openappfilter_ipk
           
-          # 进入容器编译插件（复用 ImageBuilder 环境确保依赖一致）
           docker run --rm -i \
             --user root \
             -v "${{ github.workspace }}/openappfilter_ipk:/output" \
             -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
             -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
-            # 传递 OpenAppFilter 编译选项
             -e CONFIG_PACKAGE_luci-app-oaf=y \
             -e CONFIG_PACKAGE_open-app-filter=y \
             -e CONFIG_PACKAGE_oaf=y \
             -e CONFIG_PACKAGE_kmod-oaf=y \
             immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
               cd /home/build/immortalwrt && \
-              # 编译所有相关组件（V=s 显示详细日志）
               make package/luci-app-oaf/compile V=s && \
               make package/open-app-filter/compile V=s && \
               make package/oaf/compile V=s && \
               make package/kmod-oaf/compile V=s && \
-              # 查找并复制所有相关 .ipk 文件到输出目录
               find bin/packages/armsr/armv8/ -name 'luci-app-oaf*.ipk' -exec cp {} /output/ \; && \
               find bin/packages/armsr/armv8/ -name 'open-app-filter*.ipk' -exec cp {} /output/ \; && \
               find bin/packages/armsr/armv8/ -name 'oaf*.ipk' -exec cp {} /output/ \; && \
               find bin/packages/armsr/armv8/ -name 'kmod-oaf*.ipk' -exec cp {} /output/ \;
             "
           
-          # 检查插件是否生成成功
           echo "✅ 编译完成的 OpenAppFilter 相关文件："
           ls -l ${{ github.workspace }}/openappfilter_ipk/
           
-          # 验证是否生成了 kmod-oaf 文件
           if ls ${{ github.workspace }}/openappfilter_ipk/kmod-oaf*.ipk 1> /dev/null 2>&1; then
             echo "✅ 成功生成 kmod-oaf 内核模块文件"
           else
             echo "⚠️ 未找到 kmod-oaf 内核模块文件，可能编译存在问题"
           fi
           
-          # 如果没有生成任何插件文件则报错
           if ! ls ${{ github.workspace }}/openappfilter_ipk/*.ipk 1> /dev/null 2>&1; then
             echo "❌ OpenAppFilter 插件编译失败，未生成任何 .ipk 文件"
             exit 1
@@ -343,4 +333,18 @@ jobs:
         run: |
           ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" | head -n1)
           echo "✅ Found: $ROOTFS_FILE"
-          if
+          if [ ! -f "$ROOTFS_FILE" ]; then
+            echo "❌ 找不到 rootfs.tar.gz 文件"
+            exit 1
+          fi
+          echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
+
+      - name: Package armsr-armv8 as ImmortalWrt by ophub
+        uses: ophub/amlogic-s9xxx-openwrt@main
+        with:
+          openwrt_path: ${{ steps.find_rootfs.outputs.file }}
+          openwrt_board: ${{ inputs.openwrt_board }}
+          openwrt_kernel: ${{ inputs.openwrt_kernel }}
+          auto_kernel: true
+          kernel_repo: "ophub/kernel"
+          kernel_usage
