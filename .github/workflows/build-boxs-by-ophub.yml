@@ -1,422 +1,87 @@
-name: Build OpenWrt Firmware
-on:
-  workflow_dispatch:  # 确保包含手动触发配置
-    inputs:
-      openwrt_kernel:
-        description: "选择内核版本"
-        required: true
-        default: "6.1.y"
-        type: choice
-        options:
-          - 5.4.y
-          - 5.10.y
-          - 5.15.y
-          - 6.1.y
-          - 6.6.y
-          - 6.12.y
-      openwrt_board:
-        description: "选择设备型号"
-        required: true
-        default: "a311d-oes"
-        type: choice
-        options:
-          - a311d
-          - a311d-oes
-          - s922x-oes-plus
-          - wxy-oect
-          - panther-x2
-          - s905x3-hk1
-          - tanix-tx6
-      include_docker:
-        description: "是否包含Docker"
-        required: true
-        default: 'no'
-        type: choice
-        options:
-          - 'yes'
-          - 'no'
-      builder_name:
-        description: "构建者名称"
-        required: true
-        default: "wukongdaily"
-
-jobs:
-  build:
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: 环境准备
-        run: |
-          echo "准备构建环境..."
-          sudo apt-get update
-          sudo apt-get install -y build-essential
-
-      - name: 集成OpenAppFilter插件
-        run: |
-          mkdir -p package
-          git clone https://github.com/destan19/OpenAppFilter.git package/OpenAppFilter
-
-      - name: 构建固件
-        run: |
-          echo "开始构建 ${INPUT_BOARD} 固件，内核版本 ${INPUT_KERNEL}"
-          # 简化构建命令，实际根据需求调整
-          mkdir -p output
-          touch output/firmware.img
-
-      - name: 上传构建结果
-        uses: actions/upload-artifact@v3
-        with:
-          name: openwrt-firmware
-          path: output/
-    name: Build boxs by ophub
+name: Build ImmortalWrt for fine3399
 on:
   workflow_dispatch:
-    inputs:
-      openwrt_kernel:
-        description: "选择构建的内核 当高版本内核没有时 系统会自动挑选匹配的内核。比如radxa e52c 即便你选择了6.1.y 可能最终构建还是5.10.160"
-        required: false
-        default: "6.1.y"
-        type: choice
-        options:
-          - 5.4.y
-          - 5.10.y
-          - 5.15.y
-          - 6.1.y
-          - 6.6.y
-          - 6.12.y
-      openwrt_board:
-        description: "选择型号"
-        required: false
-        default: "a311d-oes"
-        type: choice
-        options:
-          - a311d
-          - a311d-oes
-          - s922x-oes-plus
-          - wxy-oect
-          - wxy-oect-replaced
-          - panther-x2
-          - jp-tvbox
-          - s905x3-hk1
-          - tanix-tx6
-          - s905l-b860av21u
-          - s905l2-e900v21e
-          - s905l
-          - s905l-aurora-1s
-          - s905l-mg101
-          - s905l2
-          - s905l2-wojia
-          - s905l3
-          - s905l3-cm211
-          - s905l3-unt400g1
-          - s905l3-unt402a
-          - s905l3a
-          - s905l3a-cm311
-          - s905l3a-m401a
-          - s905l3b
-          - s905l3b-e900v21d
-          - s905l3b-e900v22d
-          - s905l3b-e900v22e
-          - s905l3b-ip103h
-          - s905l3b-rg020et-ca
-          - s905l3b-unt403a
-          - s905lb-ipbs9505
-          - s905lb-q96-mini
-          - s905lb-r3300l
-          - r66s
-          - r68s
-          - nanopc-t6
-          - nanopi-r5c
-          - nanopi-r5s
-          - orangepi-5-plus
-          - orangepi-5b
-          - alark35-3500
-          - anas3035
-          - beikeyun
-          - chainedbox
-          - crrc
-          - dc-a588
-          - dg3399
-          - dg-tn3568
-          - dlfr100
-          - e20c
-          - e25
-          - eaidk-610
-          - emb3531
-          - fine3399
-          - firefly-rk3399
-          - fmx1-pro
-          - h28k
-          - h66k
-          - h68k
-          - h69k
-          - h88k
-          - h88k-v3
-          - h96-max-m2
-          - hs530r
-          - hugsun-x99
-          - ipc-r
-          - king3399
-          - kylin3399
-          - lckfb-tspi
-          - leez
-          - lx-r3s
-          - mrkaio-m68s
-          - renegade-rk3328
-          - rk3318-box
-          - rock5b
-          - rock5c
-          - ruisen-box
-          - s905
-          - s905-beelink-mini
-          - s905-mxqpro-plus
-          - s905d-ki-pro
-          - s905d-sml5442tw
-          - s905mb
-          - s905w
-          - s905w-w95
-          - s905w-x96-mini
-          - s905w-x96w
-          - s905x
-          - s905x-b860h
-          - s905x-nexbox-a95x
-          - s905x-t95
-          - s905x-tbee
-          - s905x-tx9
-          - s905x2
-          - s905x2-km3
-          - s905x2-x96max-2g
-          - s905x3
-          - s905x3-2101
-          - s905x3-a100
-          - s905x3-a95xf3
-          - s905x3-a95xf3-gb
-          - s905x3-b
-          - s905x3-h96max
-          - s905x3-ip1001m
-          - s905x3-q1
-          - s905x3-q2
-          - s905x3-tx3
-          - s905x3-tx3-bz
-          - s905x3-ugoosx3
-          - s905x3-whale
-          - s905x3-x88-pro-x3
-          - s905x3-x96air
-          - s905x3-x96air-gb
-          - s905x3-x96max
-          - s905x2-hg680fj
-          - s912
-          - s912-h96pro-plus
-          - s912-m8s-pro
-          - s912-nexbox-a1
-          - s912-nexbox-a2
-          - s912-onecloudpro
-          - s912-phicomm-t1
-          - s912-t95z-plus
-          - s912-tx8-max
-          - s912-tx9-pro-2g
-          - s912-tx9-pro-3g
-          - s912-x92
-          - s912-zyxq-fake
-          - s922x
-          - s922x-ct2000
-          - s922x-gtking
-          - s922x-gtkingpro-h
-          - s922x-odroid-n2
-          - s922x-reva
-          - s922x-ugoos-am6
-          - seewo-sv21
-          - smart-am40
-          - smart-am60
-          - station-m1
-          - station-m2
-          - sv-33a6x
-          - swan1-w28
-          - sw799
-          - tb-ls3399
-          - tn3399
-          - tpm312
-          - tqc-a01
-          - tvi3315a
-          - vplus
-          - xiaobao
-          - yskj
-          - zcube1-max
-          - zk-r39a
-          - zysj
-      include_docker:
-        description: |
-          是否编译 Docker 插件
-        required: true
-        default: 'no'
-        type: choice
-        options:
-          - 'yes'
-          - 'no'
-      enable_store:
-        description: "集成 store 商店"
-        required: false
-        type: boolean
-        default: true
-      skip_imagebuilder:
-        description: "直接使用底包快速构建固件, 忽略自定义插件 ----（跳过 ImageBuilder）"
-        required: false
-        default: false
-        type: boolean
-      replace_banner:
-        description: '替换为ImmortalWrt的banner信息'
-        required: false
-        default: false
-        type: boolean
-      rootfs_partsize:
-        description: '软件包大小1G固定'
-        required: true
-        default: "1024"
-        type: choice
-        options:
-          - '1024'
-      builder_name:
-        description: "设置打包作者的名称"
-        required: true
-        default: 'wukongdaily'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
+      - name: 检出代码
         uses: actions/checkout@v3
 
-      - name: Set executable permissions
+      - name: 设置可执行权限
         run: chmod +x ${{ github.workspace }}/n1/build.sh
 
-      - name: Debug workspace contents
+      - name: 调试工作区内容
         run: ls -R
-      
-      - name: Enable Store integration
-        run: |
-          if [ "${{ github.event.inputs.enable_store }}" == "true" ]; then
-            echo 'CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-store"' >> shell/custom-packages.sh
-            echo "✅ 已追加 luci-app-store"
-          else
-            echo "❎ 未启用 luci-app-store"
-          fi
 
-      - name: 处理是否替换 banner 信息
-        if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
-        run: |
-          cp n1/99-banner.sh files/etc/uci-defaults/
-      
       - name: 集成 OpenAppFilter 源码
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           echo "✅ 开始下载 OpenAppFilter 源码"
           mkdir -p ${{ github.workspace }}/package
           git clone https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
           echo "✅ 已下载 OpenAppFilter 源码"
 
-      - name: Build Rootfs for Radxa and Other Boards (ImmortalWrt)
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+      - name: 构建 fine3399 固件（含 OpenAppFilter）
         run: |
-          echo "✅ 使用 ImageBuilder 构建 rootfs（含 OpenAppFilter）"
-          profiles="generic"
-          include_docker="${{ github.event.inputs.include_docker }}"
-          rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
-          
-          IFS=',' read -r -a profile_array <<< "$profiles"
-          
-          for profile in "${profile_array[@]}"; do
-            echo "Building for profile: $profile"
-            
-            # 确保 docker run 命令有正确的镜像参数
-            docker run --rm -i \
-              --user root \
-              -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
-              -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
-              -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
-              -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
-              -v "${{ github.workspace }}/n1/banner:/home/build/immortalwrt/files/mnt/banner" \
-              -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
-              -v "${{ github.workspace }}/n1/build.sh:/home/build/immortalwrt/build.sh" \
-              -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
-              -e PROFILE=$profile \
-              -e INCLUDE_DOCKER=$include_docker \
-              -e ROOTFS_PARTSIZE=$rootfs_partsize \
-              -e CONFIG_PACKAGE_luci-app-oaf=y \
-              -e CONFIG_PACKAGE_open-app-filter=y \
-              -e CONFIG_PACKAGE_oaf=y \
-              -e CONFIG_PACKAGE_kmod-oaf=y \
-              immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash /home/build/immortalwrt/build.sh
-          done
-          
-      - name: 单独编译 OpenAppFilter 插件
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
-        run: |
-          echo "✅ 开始单独编译 OpenAppFilter 插件"
-          mkdir -p ${{ github.workspace }}/openappfilter_ipk
-          
+          echo "✅ 使用 ImageBuilder 构建 fine3399 固件"
           docker run --rm -i \
             --user root \
-            -v "${{ github.workspace }}/openappfilter_ipk:/output" \
-            -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
+            -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
+            -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
+            -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
+            -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
+            -v "${{ github.workspace }}/n1/banner:/home/build/immortalwrt/files/mnt/banner" \
             -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
+            -v "${{ github.workspace }}/n1/build.sh:/home/build/immortalwrt/build.sh" \
+            -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
+            -e PROFILE="rockchip/fine3399" \
             -e CONFIG_PACKAGE_luci-app-oaf=y \
             -e CONFIG_PACKAGE_open-app-filter=y \
             -e CONFIG_PACKAGE_oaf=y \
             -e CONFIG_PACKAGE_kmod-oaf=y \
             immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
               cd /home/build/immortalwrt && \
-              make package/luci-app-oaf/compile V=s && \
-              make package/open-app-filter/compile V=s && \
-              make package/oaf/compile V=s && \
-              make package/kmod-oaf/compile V=s && \
-              find bin/packages/armsr/armv8/ -name 'luci-app-oaf*.ipk' -exec cp {} /output/ \; && \
-              find bin/packages/armsr/armv8/ -name 'open-app-filter*.ipk' -exec cp {} /output/ \; && \
-              find bin/packages/armsr/armv8/ -name 'oaf*.ipk' -exec cp {} /output/ \; && \
-              find bin/packages/armsr/armv8/ -name 'kmod-oaf*.ipk' -exec cp {} /output/ \;
+              make image V=s
             "
-          
-          echo "✅ 编译完成的 OpenAppFilter 相关文件："
-          ls -l ${{ github.workspace }}/openappfilter_ipk/
-          
-          if ls ${{ github.workspace }}/openappfilter_ipk/kmod-oaf*.ipk 1> /dev/null 2>&1; then
-            echo "✅ 成功生成 kmod-oaf 内核模块文件"
-          else
-            echo "⚠️ 未找到 kmod-oaf 内核模块文件，可能编译存在问题"
-          fi
-          
-          if ! ls ${{ github.workspace }}/openappfilter_ipk/*.ipk 1> /dev/null 2>&1; then
-            echo "❌ OpenAppFilter 插件编译失败，未生成任何 .ipk 文件"
-            exit 1
-          fi
 
-      - name: Download prebuilt rootfs.tar.gz
-        if: ${{ github.event.inputs.skip_imagebuilder == 'true' }}
-        run: |
-          echo "📦 正在下载预构建 rootfs"
-          mkdir -p bin/targets/armsr/armv8
-          curl -L -o bin/targets/armsr/armv8/openwrt-armvirt-64-default-rootfs.tar.gz \
-            https://github.com/wukongdaily/AutoBuildImmortalWrt/releases/download/rootfs/immortalwrt-24.10.2-armsr-armv8-generic-rootfs.tar.gz
-
-      - name: 查找rootfs.tar.gz所在路径
-        id: find_rootfs
-        run: |
-          ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" | head -n1)
-          echo "✅ Found: $ROOTFS_FILE"
-          if [ ! -f "$ROOTFS_FILE" ]; then
-            echo "❌ 找不到 rootfs.tar.gz 文件"
-            exit 1
-          fi
-          echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
-
-      - name: Package armsr-armv8 as ImmortalWrt by ophub
+      - name: 打包为 ophub 的 ImmortalWrt（fine3399）
         uses: ophub/amlogic-s9xxx-openwrt@main
         with:
-          openwrt_path: ${{ steps.find_rootfs.outputs.file }}
-          openwrt_board: ${{ inputs.openwrt_board }}
-          openwrt_kernel: ${{ inputs.openwrt_kernel }}
+          openwrt_path: "${{ github.workspace }}/bin/targets/rockchip/armv8/"
+          openwrt_board: "fine3399"
+          openwrt_kernel: "6.1.y"
           auto_kernel: true
           kernel_repo: "ophub/kernel"
-          kernel_usage
+          kernel_usage: flippy
+          builder_name: "your_name"  # 替换为你的名称
+
+      - name: 重命名 fine3399 固件文件
+        run: |
+          MODEL="fine3399"
+          KERNEL_VERSION="$(ls ${{ github.workspace }}/bin/targets/rockchip/armv8/ | grep -oP 'k\d+\.\d+\.\d+' | head -n1)"
+          if [[ -z "$KERNEL_VERSION" ]]; then
+            echo "未找到内核版本信息，使用默认命名"
+            KERNEL_VERSION="default"
+          fi
+          for FILE in ${{ github.workspace }}/bin/targets/rockchip/armv8/*.img.gz; do
+            FILENAME=$(basename "$FILE")
+            NEW_NAME="immortalwrt-fine3399-btrfs-${KERNEL_VERSION}.img.gz"
+            mv "$FILE" "${{ github.workspace }}/bin/targets/rockchip/armv8/$NEW_NAME"
+            echo "重命名为: $NEW_NAME"
+          done
+
+      - name: 上传 fine3399 固件到 GitHub Releases
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: fine3399-build
+          name: ImmortalWrt for fine3399 (含 OpenAppFilter 插件)
+          body: |
+            ## 构建信息
+            - 设备型号：fine3399
+            - 内核版本：6.1.y
+            - 作者：your_name  # 替换为你的名称
+            - 集成组件：OpenAppFilter
+          files: "${{ github.workspace }}/bin/targets/rockchip/armv8/*.img.gz"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
