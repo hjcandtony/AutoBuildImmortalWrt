@@ -1,4 +1,76 @@
-name: Build boxs by ophub
+name: Build OpenWrt Firmware
+on:
+  workflow_dispatch:  # 确保包含手动触发配置
+    inputs:
+      openwrt_kernel:
+        description: "选择内核版本"
+        required: true
+        default: "6.1.y"
+        type: choice
+        options:
+          - 5.4.y
+          - 5.10.y
+          - 5.15.y
+          - 6.1.y
+          - 6.6.y
+          - 6.12.y
+      openwrt_board:
+        description: "选择设备型号"
+        required: true
+        default: "a311d-oes"
+        type: choice
+        options:
+          - a311d
+          - a311d-oes
+          - s922x-oes-plus
+          - wxy-oect
+          - panther-x2
+          - s905x3-hk1
+          - tanix-tx6
+      include_docker:
+        description: "是否包含Docker"
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+      builder_name:
+        description: "构建者名称"
+        required: true
+        default: "wukongdaily"
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 环境准备
+        run: |
+          echo "准备构建环境..."
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: 集成OpenAppFilter插件
+        run: |
+          mkdir -p package
+          git clone https://github.com/destan19/OpenAppFilter.git package/OpenAppFilter
+
+      - name: 构建固件
+        run: |
+          echo "开始构建 ${INPUT_BOARD} 固件，内核版本 ${INPUT_KERNEL}"
+          # 简化构建命令，实际根据需求调整
+          mkdir -p output
+          touch output/firmware.img
+
+      - name: 上传构建结果
+        uses: actions/upload-artifact@v3
+        with:
+          name: openwrt-firmware
+          path: output/
+    name: Build boxs by ophub
 on:
   workflow_dispatch:
     inputs:
