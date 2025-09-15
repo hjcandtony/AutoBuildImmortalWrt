@@ -1,9 +1,9 @@
-name: Build boxs by ophub
+name: Build ImmortalWrt with OpenAppFilter
 on:
   workflow_dispatch:
     inputs:
       openwrt_kernel:
-        description: "选择构建的内核 当高版本内核没有时 系统会自动挑选匹配的内核。比如radxa e52c 即便你选择了6.1.y 可能最终构建还是5.10.160"
+        description: "选择构建的内核版本"
         required: false
         default: "6.1.y"
         type: choice
@@ -15,7 +15,7 @@ on:
           - 6.6.y
           - 6.12.y
       openwrt_board:
-        description: "选择型号"
+        description: "选择设备型号"
         required: false
         default: "a311d-oes"
         type: choice
@@ -175,8 +175,7 @@ on:
           - zk-r39a
           - zysj
       include_docker:
-        description: |
-          是否编译 Docker 插件
+        description: "是否编译 Docker 插件"
         required: true
         default: 'no'
         type: choice
@@ -194,36 +193,36 @@ on:
         default: false
         type: boolean
       replace_banner:
-        description: '替换为ImmortalWrt的banner信息'
+        description: "替换为 ImmortalWrt 的 banner 信息"
         required: false
         default: false
         type: boolean
       rootfs_partsize:
-        description: '软件包大小1G固定'
+        description: "软件包大小（1G 固定）"
         required: true
         default: "1024"
         type: choice
         options:
-          - '1024'
+          - "1024"
       builder_name:
         description: "设置打包作者的名称"
         required: true
-        default: 'wukongdaily'
+        default: "wukongdaily"
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
+      - name: 检出代码
         uses: actions/checkout@v3
 
-      - name: Set executable permissions
+      - name: 设置可执行权限
         run: chmod +x ${{ github.workspace }}/n1/build.sh
 
-      - name: Debug workspace contents
+      - name: 调试工作区内容
         run: ls -R
-      
-      - name: Enable Store integration
+
+      - name: 启用 Store 集成
         run: |
           if [ "${{ github.event.inputs.enable_store }}" == "true" ]; then
             echo 'CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-store"' >> shell/custom-packages.sh
@@ -232,11 +231,10 @@ jobs:
             echo "❎ 未启用 luci-app-store"
           fi
 
-      - name: 处理是否替换 banner 信息
+      - name: 处理 banner 信息替换
         if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
-        run: |
-          cp n1/99-banner.sh files/etc/uci-defaults/
-      
+        run: cp n1/99-banner.sh files/etc/uci-defaults/
+
       - name: 集成 OpenAppFilter 源码
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
@@ -245,19 +243,19 @@ jobs:
           git clone https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
           echo "✅ 已下载 OpenAppFilter 源码"
 
-      - name: Build Rootfs for Radxa and Other Boards (ImmortalWrt)
+      - name: 构建 Radxa 及其他板卡的根文件系统（ImmortalWrt）
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           echo "✅ 使用 ImageBuilder 构建 rootfs（含 OpenAppFilter）"
           profiles="generic"
           include_docker="${{ github.event.inputs.include_docker }}"
           rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
-          
+
           IFS=',' read -r -a profile_array <<< "$profiles"
-          
+
           for profile in "${profile_array[@]}"; do
             echo "Building for profile: $profile"
-            
+
             docker run --rm -i \
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
@@ -275,51 +273,13 @@ jobs:
               -e CONFIG_PACKAGE_open-app-filter=y \
               -e CONFIG_PACKAGE_oaf=y \
               -e CONFIG_PACKAGE_kmod-oaf=y \
-              immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash /home/build/immortalwrt/build.sh
+              immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
+                cd /home/build/immortalwrt && \
+                make image V=s
+              "
           done
-          
-      - name: 单独编译 OpenAppFilter 插件
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
-        run: |
-          echo "✅ 开始单独编译 OpenAppFilter 插件"
-          mkdir -p ${{ github.workspace }}/openappfilter_ipk
-          
-          docker run --rm -i \
-            --user root \
-            -v "${{ github.workspace }}/openappfilter_ipk:/output" \
-            -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
-            -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
-            -e CONFIG_PACKAGE_luci-app-oaf=y \
-            -e CONFIG_PACKAGE_open-app-filter=y \
-            -e CONFIG_PACKAGE_oaf=y \
-            -e CONFIG_PACKAGE_kmod-oaf=y \
-            immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
-              cd /home/build/immortalwrt && \
-              make package/luci-app-oaf/compile V=s && \
-              make package/open-app-filter/compile V=s && \
-              make package/oaf/compile V=s && \
-              make package/kmod-oaf/compile V=s && \
-              find bin/packages/armsr/armv8/ -name 'luci-app-oaf*.ipk' -exec cp {} /output/ \; && \
-              find bin/packages/armsr/armv8/ -name 'open-app-filter*.ipk' -exec cp {} /output/ \; && \
-              find bin/packages/armsr/armv8/ -name 'oaf*.ipk' -exec cp {} /output/ \; && \
-              find bin/packages/armsr/armv8/ -name 'kmod-oaf*.ipk' -exec cp {} /output/ \;
-            "
-          
-          echo "✅ 编译完成的 OpenAppFilter 相关文件："
-          ls -l ${{ github.workspace }}/openappfilter_ipk/
-          
-          if ls ${{ github.workspace }}/openappfilter_ipk/kmod-oaf*.ipk 1> /dev/null 2>&1; then
-            echo "✅ 成功生成 kmod-oaf 内核模块文件"
-          else
-            echo "⚠️ 未找到 kmod-oaf 内核模块文件，可能编译存在问题"
-          fi
-          
-          if ! ls ${{ github.workspace }}/openappfilter_ipk/*.ipk 1> /dev/null 2>&1; then
-            echo "❌ OpenAppFilter 插件编译失败，未生成任何 .ipk 文件"
-            exit 1
-          fi
 
-      - name: Download prebuilt rootfs.tar.gz
+      - name: 下载预构建的 rootfs.tar.gz
         if: ${{ github.event.inputs.skip_imagebuilder == 'true' }}
         run: |
           echo "📦 正在下载预构建 rootfs"
@@ -327,7 +287,7 @@ jobs:
           curl -L -o bin/targets/armsr/armv8/openwrt-armvirt-64-default-rootfs.tar.gz \
             https://github.com/wukongdaily/AutoBuildImmortalWrt/releases/download/rootfs/immortalwrt-24.10.2-armsr-armv8-generic-rootfs.tar.gz
 
-      - name: 查找rootfs.tar.gz所在路径
+      - name: 查找 rootfs.tar.gz 所在路径
         id: find_rootfs
         run: |
           ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" | head -n1)
@@ -338,7 +298,7 @@ jobs:
           fi
           echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
 
-      - name: Package armsr-armv8 as ImmortalWrt by ophub
+      - name: 打包为 ophub 的 ImmortalWrt（armsr-armv8）
         uses: ophub/amlogic-s9xxx-openwrt@main
         with:
           openwrt_path: ${{ steps.find_rootfs.outputs.file }}
@@ -349,8 +309,34 @@ jobs:
           kernel_usage: flippy
           builder_name: ${{ inputs.builder_name }}
 
-      - name: Rename .img.gz files
+      - name: 重命名 .img.gz 文件
         id: rename
         run: |
           MODEL=${{ inputs.openwrt_board }}
-          for
+          for FILE in ${{ env.PACKAGED_OUTPUT_PATH }}/*.img.gz; do
+            FILENAME=$(basename "$FILE")
+            KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+')
+            if [[ -z "$KERNEL_VERSION" ]]; then
+              echo "Skipped: Could not extract kernel version from $FILENAME"
+              continue
+            fi
+            NEW_NAME="immortalwrt-24.10.2-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
+            mv "$FILE" "${{ env.PACKAGED_OUTPUT_PATH }}/$NEW_NAME"
+            echo "Renamed to: $NEW_NAME"
+          done
+
+      - name: 上传固件和 OpenAppFilter 到 GitHub Releases
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: ophub
+          name: ImmortalWrt for boxs (含 OpenAppFilter 插件)
+          body: |
+            ## 构建信息
+            - 设备型号：${{ inputs.openwrt_board }}
+            - 内核版本：${{ inputs.openwrt_kernel }}（系统自动适配）
+            - 作者：${{ inputs.builder_name }}
+            - 集成组件：Docker(${{ inputs.include_docker }})、Store(${{ inputs.enable_store }})、OpenAppFilter
+          files: |
+            ${{ env.PACKAGED_OUTPUT_PATH }}/*.img.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
