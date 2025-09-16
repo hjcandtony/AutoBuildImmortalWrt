@@ -17,7 +17,7 @@ on:
       openwrt_board:
         description: "选择设备型号"
         required: false
-        default: "fine3399"
+        default: "a311d-oes"
         type: choice
         options:
           - a311d
@@ -243,9 +243,11 @@ jobs:
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           echo "✅ 开始下载 OpenAppFilter 源码"
-          mkdir -p ${{ github.workspace }}/package
+          mkdir -p ${{ github.workspace }}/package/OpenAppFilter
           git clone https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
           echo "✅ 已下载 OpenAppFilter 源码"
+          # 显示下载的源码文件
+          ls -la ${{ github.workspace }}/package/OpenAppFilter
 
       - name: 构建 Radxa 及其他板卡的根文件系统（ImmortalWrt）
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
@@ -279,9 +281,40 @@ jobs:
               -e CONFIG_PACKAGE_kmod-oaf=y \
               immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
                 cd /home/build/immortalwrt && \
-                make image V=s
+                make image V=s && \
+                # 保存OpenAppFilter相关ipk包到指定目录
+                mkdir -p /home/build/immortalwrt/bin/oaf-packages && \
+                find /home/build/immortalwrt/bin -name 'luci-app-oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-packages/ \; && \
+                find /home/build/immortalwrt/bin -name 'open-app-filter*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-packages/ \; && \
+                find /home/build/immortalwrt/bin -name 'oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-packages/ \; && \
+                find /home/build/immortalwrt/bin -name 'kmod-oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-packages/ \;
               "
           done
+
+      - name: 定位 OpenAppFilter 插件文件
+        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+        id: find_oaf
+        run: |
+          # 创建插件输出目录
+          mkdir -p ${{ github.workspace }}/oaf-packages
+          
+          # 查找并复制OpenAppFilter相关ipk包
+          find ${{ github.workspace }}/bin -name 'luci-app-oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-packages/ \;
+          find ${{ github.workspace }}/bin -name 'open-app-filter*.ipk' -exec cp {} ${{ github.workspace }}/oaf-packages/ \;
+          find ${{ github.workspace }}/bin -name 'oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-packages/ \;
+          find ${{ github.workspace }}/bin -name 'kmod-oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-packages/ \;
+          
+          # 检查是否找到插件文件
+          OAF_FILES=$(find ${{ github.workspace }}/oaf-packages -type f -name "*.ipk")
+          if [ -z "$OAF_FILES" ]; then
+            echo "警告：未找到OpenAppFilter插件文件"
+            echo "oaf_found=false" >> $GITHUB_OUTPUT
+          else
+            echo "找到以下OpenAppFilter插件文件："
+            echo "$OAF_FILES"
+            echo "oaf_found=true" >> $GITHUB_OUTPUT
+            echo "oaf_path=${{ github.workspace }}/oaf-packages" >> $GITHUB_OUTPUT
+          fi
 
       - name: 下载预构建的 rootfs.tar.gz
         if: ${{ github.event.inputs.skip_imagebuilder == 'true' }}
@@ -391,19 +424,17 @@ jobs:
           echo "找到的 .img.gz 文件完整路径: $IMG_FILE_FULL"
           ls -l "$IMG_FILE_FULL" || echo "无法获取文件信息"
           
-          # 核心修复：修改目标路径权限为可写
+          # 修改目标路径权限为可写
           echo "尝试修改路径 $PACKAGED_OUTPUT_PATH 的权限为可写"
           sudo chmod -R 777 "$PACKAGED_OUTPUT_PATH"
           
           # 基于时间和型号构建新文件名
-          # 格式：immortalwrt-YYYYMMDD-型号.img.gz
           NEW_NAME="immortalwrt-${CURRENT_DATE}-${MODEL}.img.gz"
           NEW_FILE_PATH="$PACKAGED_OUTPUT_PATH/$NEW_NAME"
           
           # 检查目标路径是否可写（修复后二次确认）
           if [ -w "$PACKAGED_OUTPUT_PATH" ]; then
             echo "尝试重命名文件：从 $IMG_FILE_FULL 到 $NEW_FILE_PATH"
-            # 使用cp+rm代替mv，避免跨文件系统问题
             cp -f "$IMG_FILE_FULL" "$NEW_FILE_PATH" && rm -f "$IMG_FILE_FULL"
             
             # 检查重命名是否成功
@@ -432,7 +463,7 @@ jobs:
           fi
           set +x  # 关闭调试模式
 
-      - name: 上传固件到 GitHub Releases
+      - name: 上传固件及OpenAppFilter插件到 GitHub Releases
         uses: softprops/action-gh-release@v2.2.1
         with:
           tag_name: build-${{ steps.get_time.outputs.current_date }}-${{ github.run_id }}
@@ -444,8 +475,13 @@ jobs:
             - 内核版本：${{ inputs.openwrt_kernel }}
             - 作者：${{ inputs.builder_name }}
             - 集成组件：Docker(${{ inputs.include_docker }})、Store(${{ inputs.enable_store }})、OpenAppFilter
+            
+            ## 包含文件
+            - 固件文件：immortalwrt-${{ steps.get_time.outputs.current_date }}-${{ inputs.openwrt_board }}.img.gz
+            - OpenAppFilter插件：luci-app-oaf及相关依赖包
           files: |
             ${{ steps.rename.outputs.packaged_output_path }}/${{ steps.rename.outputs.new_name }}
+            ${{ steps.find_oaf.outputs.oaf_path }}/*.ipk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
