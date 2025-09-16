@@ -243,7 +243,6 @@ jobs:
         run: |
           echo "✅ 强制下载 OpenAppFilter 源码"
           mkdir -p ${{ github.workspace }}/package/OpenAppFilter
-          # 简化git clone命令，确保正确克隆
           git clone https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
           echo "✅ 已下载 OpenAppFilter 源码，文件列表："
           ls -la ${{ github.workspace }}/package/OpenAppFilter
@@ -342,9 +341,10 @@ jobs:
       - name: 查找 rootfs.tar.gz 所在路径
         id: find_rootfs
         run: |
-          ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" | head -n1)
+          # 修正find命令的引号使用
+          ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "rootfs.tar.gz" | head -n1)
           echo "✅ Found: $ROOTFS_FILE"
-          if [ ! -f "$ROOTFS_FILE" ]; then
+          if [ -z "$ROOTFS_FILE" ] || [ ! -f "$ROOTFS_FILE" ]; then
             echo "❌ 找不到 rootfs.tar.gz 文件，尝试其他路径"
-            ROOTFS_FILE=$(find ${{ github.workspace }} -type f -name "*rootfs.tar.gz" | head -n1)
-            if [ ! -f "$ROOTFS
+            ROOTFS_FILE=$(find ${{ github.workspace }} -type f -name "rootfs.tar.gz" | head -n1)
+            if [ -
