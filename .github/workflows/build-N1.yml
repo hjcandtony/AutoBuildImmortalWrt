@@ -1,5 +1,4 @@
 name: Build OpenAppFilter for RK3399 iStoreOS
-
 on:
   workflow_dispatch:
 
@@ -17,11 +16,11 @@ jobs:
 
       - name: 获取当前时间
         id: get_time
-        run: echo "current_date=$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
+        run: echo "current_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
 
-      - name: 克隆iStoreOS源码
+      - name: 克隆iStoreOS源码（改用main分支）
         run: |
-          git clone https://github.com/istoreos/istoreos.git --depth=1
+          git clone https://github.com/istoreos/istoreos.git
           cd istoreos
           echo "ISTOREOS_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
@@ -50,25 +49,27 @@ jobs:
       - name: 集成OpenAppFilter源码
         run: |
           cd istoreos/package
-          # 克隆OpenAppFilter并检查目录结构
+          # 克隆OpenAppFilter源码
           git clone https://github.com/destan19/OpenAppFilter.git
-          
-          # 检查目录结构
-          echo "OpenAppFilter目录内容:"
-          ls -la OpenAppFilter/
-          
-          # 查找Makefile文件
-          if [ -f "OpenAppFilter/Makefile" ]; then
-            echo "✅ 找到主Makefile文件"
-          elif [ -f "OpenAppFilter/open-app-filter/Makefile" ]; then
-            echo "✅ 在open-app-filter子目录找到Makefile"
-          else
-            echo "❌ 未找到Makefile文件，目录内容:"
-            find OpenAppFilter/ -type f -name "Makefile" -o -name "makefile" | head -10
+          cd OpenAppFilter
+          # 检查是否存在Makefile，若不存在则尝试从源码结构中找或提示
+          if [ ! -f "Makefile" ]; then
+            echo "⚠️ OpenAppFilter目录下未找到Makefile，尝试查看目录结构"
+            ls -la
+            echo "❌ 未找到Makefile，可能源码结构变化，请检查OpenAppFilter仓库"
             exit 1
           fi
+          # 适配iStoreOS的Makefile调整（若后续仍有问题，可考虑注释或简化）
+          sed -i 's/$(PKG_NAME)-$(PKG_VERSION)/$(PKG_NAME)/g' Makefile
+          sed -i 's/include \$(TOPDIR)\/rules.mk/include \$(TOPDIR)\/rules.mk\nPKG_KERNEL_VERSION:=6.1.151/g' Makefile
 
-      - name: 配置OpenAppFilter编译选项
+      - name: 准备OpenWrt编译环境
+        run: |
+          cd istoreos
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: 配置OpenAppFilter编译选项(生成IPK)
         run: |
           cd istoreos
           # 配置为模块编译，确保生成IPK
@@ -82,22 +83,12 @@ jobs:
           
           # 验证配置
           echo "已配置的OpenAppFilter选项:"
-          grep "CONFIG_PACKAGE_.*oaf" .config || true
-
-      - name: 更新 feeds 并安装依赖
-        run: |
-          cd istoreos
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          grep "CONFIG_PACKAGE_.*oaf" .config
 
       - name: 编译OpenAppFilter插件
         run: |
           cd istoreos
-          # 首先编译工具链和依赖
-          make tools/compile -j$(nproc)
-          make toolchain/compile -j$(nproc)
-          
-          # 单独编译OpenAppFilter
+          # 单独编译OpenAppFilter，加快速度
           make package/OpenAppFilter/compile V=s -j$(nproc)
           
           # 创建IPK收集目录
@@ -106,14 +97,11 @@ jobs:
           # 查找并复制生成的IPK文件
           find bin/ -name "*oaf*.ipk" -exec cp {} ${{ github.workspace }}/oaf-ipk/ \;
           find bin/ -name "*open-app-filter*.ipk" -exec cp {} ${{ github.workspace }}/oaf-ipk/ \;
-          find bin/ -name "*luci-app-oaf*.ipk" -exec cp {} ${{ github.workspace }}/oaf-ipk/ \;
           
           # 检查是否生成了IPK
           IPK_COUNT=$(ls -1 ${{ github.workspace }}/oaf-ipk/*.ipk 2>/dev/null | wc -l)
           if [ $IPK_COUNT -eq 0 ]; then
             echo "❌ 未生成任何IPK文件，编译失败"
-            echo "尝试查找所有ipk文件:"
-            find bin/ -name "*.ipk" | head -10
             exit 1
           else
             echo "✅ 成功生成 $IPK_COUNT 个IPK文件"
@@ -133,9 +121,6 @@ jobs:
           echo "安装方法:" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
           echo "1. 将IPK文件上传到设备" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
           echo "2. 执行: opkg install *.ipk" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
-          echo "" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
-          echo "包含的包:" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
-          ls -1 ${{ github.workspace }}/oaf-ipk/*.ipk | sed 's|.*/||' >> ${{ github.workspace }}/oaf-ipk/INFO.txt
 
       - name: 上传插件到Releases
         uses: softprops/action-gh-release@v2.2.1
@@ -148,16 +133,14 @@ jobs:
             - 内核版本: 6.1.151
             - 目标平台: RK3399
             - 构建时间: ${{ steps.get_time.outputs.current_date }}
-            - iStoreOS Commit: ${{ env.ISTOREOS_COMMIT }}
             
             ### 安装方法
             1. 下载所有IPK文件
             2. 上传到设备任意目录
             3. 执行 `opkg install *.ipk` 安装
-            
-            ### 包含的包
-            $(ls -1 ${{ github.workspace }}/oaf-ipk/*.ipk | sed 's|.*/||' | sed 's/^/- /')
-          files: ${{ github.workspace }}/oaf-ipk/*
+          files: |
+            ${{ github.workspace }}/oaf-ipk/*.ipk
+            ${{ github.workspace }}/oaf-ipk/INFO.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -169,4 +152,3 @@ jobs:
           echo "- 时间: ${{ steps.get_time.outputs.current_date }}"
           echo "- 目标平台: RK3399"
           echo "- 内核版本: 6.1.151"
-          echo "- iStoreOS Commit: ${{ env.ISTOREOS_COMMIT }}"
