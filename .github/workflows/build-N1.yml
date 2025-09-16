@@ -1,4 +1,4 @@
-name: Build OpenAppFilter for RK3399 iStoreOS 24.10.2
+name: Build OpenAppFilter for RK3399 iStoreOS
 on:
   workflow_dispatch:
 
@@ -18,9 +18,9 @@ jobs:
         id: get_time
         run: echo "current_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
 
-      - name: 克隆iStoreOS源码(24.10.2)
+      - name: 克隆iStoreOS源码（改用main分支）
         run: |
-          git clone -b v24.10.2 https://github.com/istoreos/istoreos.git
+          git clone https://github.com/istoreos/istoreos.git
           cd istoreos
           echo "ISTOREOS_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
@@ -99,10 +99,9 @@ jobs:
 
       - name: 生成插件信息
         run: |
-          echo "OpenAppFilter for RK3399 iStoreOS 24.10.2" > ${{ github.workspace }}/oaf-ipk/INFO.txt
+          echo "OpenAppFilter for RK3399 iStoreOS" > ${{ github.workspace }}/oaf-ipk/INFO.txt
           echo "内核版本: 6.1.151" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
           echo "构建时间: ${{ steps.get_time.outputs.current_date }}" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
-          echo "iStoreOS版本: v24.10.2" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
           echo "iStoreOS Commit: ${{ env.ISTOREOS_COMMIT }}" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
           echo "" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
           echo "安装方法:" >> ${{ github.workspace }}/oaf-ipk/INFO.txt
@@ -112,11 +111,11 @@ jobs:
       - name: 上传插件到Releases
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: oaf-istoreos-24.10.2-rk3399-${{ steps.get_time.outputs.current_date }}
-          name: OpenAppFilter for RK3399 iStoreOS 24.10.2 (6.1.151)
+          tag_name: oaf-istoreos-rk3399-${{ steps.get_time.outputs.current_date }}
+          name: OpenAppFilter for RK3399 iStoreOS (6.1.151)
           body: |
             ## OpenAppFilter插件 (RK3399专用)
-            - 适用系统: iStoreOS 24.10.2
+            - 适用系统: iStoreOS
             - 内核版本: 6.1.151
             - 目标平台: RK3399
             - 构建时间: ${{ steps.get_time.outputs.current_date }}
@@ -138,6 +137,4 @@ jobs:
           echo "- 状态: ${{ job.status }}"
           echo "- 时间: ${{ steps.get_time.outputs.current_date }}"
           echo "- 目标平台: RK3399"
-          echo "- 系统版本: iStoreOS 24.10.2"
           echo "- 内核版本: 6.1.151"
-    
