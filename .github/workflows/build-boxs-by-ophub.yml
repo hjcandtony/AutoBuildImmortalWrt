@@ -327,29 +327,43 @@ jobs:
             echo "当前工作目录路径：$(pwd)"
           fi
 
-      - name: 重命名 .img.gz 文件（增强容错）
+      - name: 重命名 .img.gz 文件（增强容错+详细日志）
         id: rename
         run: |
+          set -x  # 开启调试模式
           MODEL=${{ inputs.openwrt_board }}
           PACKAGED_OUTPUT_PATH=${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}
           echo "当前设备型号: $MODEL"
           echo "打包输出路径: $PACKAGED_OUTPUT_PATH"
           
+          # 初始化变量
+          IMG_FILE_FULL=""
+          
           # 检查 ophub 动作输出的路径是否存在
-          if [ ! -d "$PACKAGED_OUTPUT_PATH" ]; then
-            echo "警告：打包输出路径 $PACKAGED_OUTPUT_PATH 不存在，尝试查找可能的输出目录"
+          if [ ! -d "$PACKAGED_OUTPUT_PATH" ] || [ -z "$PACKAGED_OUTPUT_PATH" ]; then
+            echo "警告：打包输出路径无效，尝试查找可能的输出目录"
             # 尝试从常见输出位置查找 .img.gz 文件
-            POTENTIAL_DIRS=("${{ github.workspace }}/output" "${{ github.workspace }}/bin" "${{ github.workspace }}")
+            POTENTIAL_DIRS=(
+              "${{ github.workspace }}/output" 
+              "${{ github.workspace }}/bin" 
+              "${{ github.workspace }}"
+              "${{ github.workspace }}/firmware"
+              "${{ github.workspace }}/build"
+            )
             FOUND_IMG=false
             for dir in "${POTENTIAL_DIRS[@]}"; do
               echo "检查目录: $dir"
-              IMG_FILE=$(find "$dir" -type f -name "*.img.gz" | head -n1)
-              if [ -n "$IMG_FILE" ]; then
-                echo "在 $dir 中找到 .img.gz 文件: $IMG_FILE"
-                PACKAGED_OUTPUT_PATH=$(dirname "$IMG_FILE")
-                IMG_FILE_FULL="$IMG_FILE"
-                FOUND_IMG=true
-                break
+              if [ -d "$dir" ]; then
+                IMG_FILE=$(find "$dir" -type f -name "*.img.gz" | head -n1)
+                if [ -n "$IMG_FILE" ]; then
+                  echo "在 $dir 中找到 .img.gz 文件: $IMG_FILE"
+                  PACKAGED_OUTPUT_PATH=$(dirname "$IMG_FILE")
+                  IMG_FILE_FULL="$IMG_FILE"
+                  FOUND_IMG=true
+                  break
+                fi
+              else
+                echo "目录 $dir 不存在，跳过"
               fi
             done
             if [ "$FOUND_IMG" = "false" ]; then
@@ -365,6 +379,11 @@ jobs:
             fi
           fi
           
+          # 打印找到的 .img.gz 文件详细信息
+          echo "找到的 .img.gz 文件完整路径: $IMG_FILE_FULL"
+          ls -l "$IMG_FILE_FULL" || echo "无法获取文件信息"
+          
+          # 提取文件名和内核版本
           FILENAME=$(basename "$IMG_FILE_FULL")
           KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+')
           if [[ -z "$KERNEL_VERSION" ]]; then
@@ -372,4 +391,44 @@ jobs:
             echo "警告：无法从文件名 $FILENAME 中提取内核版本，使用默认值 $KERNEL_VERSION"
           fi
           
+          # 构建新文件名并执行重命名
           NEW_NAME="immortalwrt-24.10.2-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
+          NEW_FILE_PATH="$PACKAGED_OUTPUT_PATH/$NEW_NAME"
+          
+          # 检查目标路径是否可写
+          if [ -w "$PACKAGED_OUTPUT_PATH" ]; then
+            echo "尝试重命名文件：从 $IMG_FILE_FULL 到 $NEW_FILE_PATH"
+            # 使用cp+rm代替mv，避免跨文件系统问题
+            cp "$IMG_FILE_FULL" "$NEW_FILE_PATH" && rm "$IMG_FILE_FULL"
+            
+            # 检查重命名是否成功
+            if [ -f "$NEW_FILE_PATH" ]; then
+              echo "重命名成功为: $NEW_NAME"
+              echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
+              echo "packaged_output_path=$PACKAGED_OUTPUT_PATH" >> $GITHUB_OUTPUT
+            else
+              echo "错误：重命名操作执行后，目标文件不存在"
+              exit 1
+            fi
+          else
+            echo "错误：路径 $PACKAGED_OUTPUT_PATH 不可写，无法重命名文件"
+            exit 1
+          fi
+          set +x  # 关闭调试模式
+
+      - name: 上传固件到 GitHub Releases
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: ophub-${{ github.run_id }}
+          name: ImmortalWrt for ${{ inputs.openwrt_board }} (含 OpenAppFilter 插件)
+          body: |
+            ## 构建信息
+            - 设备型号：${{ inputs.openwrt_board }}
+            - 内核版本：${{ inputs.openwrt_kernel }}（系统自动适配）
+            - 作者：${{ inputs.builder_name }}
+            - 集成组件：Docker(${{ inputs.include_docker }})、Store(${{ inputs.enable_store }})、OpenAppFilter
+          files: |
+            ${{ steps.rename.outputs.packaged_output_path }}/${{ steps.rename.outputs.new_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
