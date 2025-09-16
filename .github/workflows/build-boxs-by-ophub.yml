@@ -219,6 +219,10 @@ jobs:
       - name: 设置可执行权限
         run: chmod +x ${{ github.workspace }}/n1/build.sh
 
+      - name: 获取当前时间（用于命名）
+        id: get_time
+        run: echo "current_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
       - name: 调试工作区内容（初始）
         run: ls -R
 
@@ -327,15 +331,15 @@ jobs:
             echo "当前工作目录路径：$(pwd)"
           fi
 
-      - name: 重命名 .img.gz 文件（修复内核版本提取）
+      - name: 重命名 .img.gz 文件（时间+型号命名规则）
         id: rename
         run: |
           set -x  # 开启调试模式
           MODEL=${{ inputs.openwrt_board }}
-          SELECTED_KERNEL="${{ inputs.openwrt_kernel }}"  # 获取用户选择的内核版本
+          CURRENT_DATE="${{ steps.get_time.outputs.current_date }}"  # 获取当前日期（YYYYMMDD格式）
           PACKAGED_OUTPUT_PATH=${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}
           echo "当前设备型号: $MODEL"
-          echo "用户选择的内核版本: $SELECTED_KERNEL"
+          echo "当前日期: $CURRENT_DATE"
           echo "打包输出路径: $PACKAGED_OUTPUT_PATH"
           
           # 初始化变量
@@ -356,11 +360,12 @@ jobs:
             for dir in "${POTENTIAL_DIRS[@]}"; do
               echo "检查目录: $dir"
               if [ -d "$dir" ]; then
-                IMG_FILE=$(find "$dir" -type f -name "*.img.gz" | head -n1)
-                if [ -n "$IMG_FILE" ]; then
-                  echo "在 $dir 中找到 .img.gz 文件: $IMG_FILE"
-                  PACKAGED_OUTPUT_PATH=$(dirname "$IMG_FILE")
-                  IMG_FILE_FULL="$IMG_FILE"
+                # 查找所有 .img.gz 文件
+                IMG_FILES=($(find "$dir" -type f -name "*.img.gz"))
+                if [ ${#IMG_FILES[@]} -gt 0 ]; then
+                  IMG_FILE_FULL="${IMG_FILES[0]}"
+                  echo "在 $dir 中找到 .img.gz 文件: $IMG_FILE_FULL"
+                  PACKAGED_OUTPUT_PATH=$(dirname "$IMG_FILE_FULL")
                   FOUND_IMG=true
                   break
                 fi
@@ -373,40 +378,29 @@ jobs:
               exit 1
             fi
           else
-            # 路径存在，直接查找 .img.gz 文件
-            IMG_FILE_FULL=$(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz" | head -n1)
-            if [ -z "$IMG_FILE_FULL" ]; then
+            # 路径存在，查找所有 .img.gz 文件
+            IMG_FILES=($(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz"))
+            if [ ${#IMG_FILES[@]} -eq 0 ]; then
               echo "错误：在 $PACKAGED_OUTPUT_PATH 中未找到 .img.gz 文件"
               exit 1
             fi
+            IMG_FILE_FULL="${IMG_FILES[0]}"
           fi
           
           # 打印找到的 .img.gz 文件详细信息
           echo "找到的 .img.gz 文件完整路径: $IMG_FILE_FULL"
           ls -l "$IMG_FILE_FULL" || echo "无法获取文件信息"
           
-          # 提取文件名和内核版本（关键修复）
-          FILENAME=$(basename "$IMG_FILE_FULL")
-          # 尝试从文件名提取内核版本
-          KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+')
-          
-          # 如果提取失败，使用用户选择的内核版本作为备选
-          if [[ -z "$KERNEL_VERSION" ]]; then
-            echo "警告：无法从文件名 $FILENAME 中提取内核版本"
-            # 将用户选择的版本（如6.1.y）转换为k6.1格式
-            KERNEL_VERSION="k$(echo "$SELECTED_KERNEL" | cut -d '.' -f 1,2)"
-            echo "使用用户选择的内核版本作为替代: $KERNEL_VERSION"
-          fi
-          
-          # 构建新文件名并执行重命名
-          NEW_NAME="immortalwrt-24.10.2-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
+          # 基于时间和型号构建新文件名（核心变更）
+          # 格式：immortalwrt-YYYYMMDD-型号.img.gz
+          NEW_NAME="immortalwrt-${CURRENT_DATE}-${MODEL}.img.gz"
           NEW_FILE_PATH="$PACKAGED_OUTPUT_PATH/$NEW_NAME"
           
           # 检查目标路径是否可写
           if [ -w "$PACKAGED_OUTPUT_PATH" ]; then
             echo "尝试重命名文件：从 $IMG_FILE_FULL 到 $NEW_FILE_PATH"
             # 使用cp+rm代替mv，避免跨文件系统问题
-            cp "$IMG_FILE_FULL" "$NEW_FILE_PATH" && rm "$IMG_FILE_FULL"
+            cp -f "$IMG_FILE_FULL" "$NEW_FILE_PATH" && rm -f "$IMG_FILE_FULL"
             
             # 检查重命名是否成功
             if [ -f "$NEW_FILE_PATH" ]; then
@@ -426,12 +420,13 @@ jobs:
       - name: 上传固件到 GitHub Releases
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: ophub-${{ github.run_id }}
-          name: ImmortalWrt for ${{ inputs.openwrt_board }} (含 OpenAppFilter 插件)
+          tag_name: build-${{ steps.get_time.outputs.current_date }}-${{ github.run_id }}
+          name: ImmortalWrt ${{ steps.get_time.outputs.current_date }} for ${{ inputs.openwrt_board }}
           body: |
             ## 构建信息
+            - 构建日期：${{ steps.get_time.outputs.current_date }}
             - 设备型号：${{ inputs.openwrt_board }}
-            - 内核版本：${{ inputs.openwrt_kernel }}（系统自动适配）
+            - 内核版本：${{ inputs.openwrt_kernel }}
             - 作者：${{ inputs.builder_name }}
             - 集成组件：Docker(${{ inputs.include_docker }})、Store(${{ inputs.enable_store }})、OpenAppFilter
           files: |
