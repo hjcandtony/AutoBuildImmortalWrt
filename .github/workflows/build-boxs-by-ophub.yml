@@ -1,465 +1,194 @@
-name: Build ImmortalWrt with OpenAppFilter
+name: Build and Upload OpenAppFilter IPK Files
 on:
   workflow_dispatch:
     inputs:
-      openwrt_kernel:
-        description: "选择构建的内核版本"
-        required: false
-        default: "6.1.y"
-        type: choice
-        options:
-          - 5.4.y
-          - 5.10.y
-          - 5.15.y
-          - 6.1.y
-          - 6.6.y
-          - 6.12.y
-      openwrt_board:
-        description: "选择设备型号"
-        required: false
-        default: "fine3399"
-        type: choice
-        options:
-          - a311d
-          - a311d-oes
-          - s922x-oes-plus
-          - wxy-oect
-          - wxy-oect-replaced
-          - panther-x2
-          - jp-tvbox
-          - s905x3-hk1
-          - tanix-tx6
-          - s905l-b860av21u
-          - s905l2-e900v21e
-          - s905l
-          - s905l-aurora-1s
-          - s905l-mg101
-          - s905l2
-          - s905l2-wojia
-          - s905l3
-          - s905l3-cm211
-          - s905l3-unt400g1
-          - s905l3-unt402a
-          - s905l3a
-          - s905l3a-cm311
-          - s905l3a-m401a
-          - s905l3b
-          - s905l3b-e900v21d
-          - s905l3b-e900v22d
-          - s905l3b-e900v22e
-          - s905l3b-ip103h
-          - s905l3b-rg020et-ca
-          - s905l3b-unt403a
-          - s905lb-ipbs9505
-          - s905lb-q96-mini
-          - s905lb-r3300l
-          - r66s
-          - r68s
-          - nanopc-t6
-          - nanopi-r5c
-          - nanopi-r5s
-          - orangepi-5-plus
-          - orangepi-5b
-          - alark35-3500
-          - anas3035
-          - beikeyun
-          - chainedbox
-          - crrc
-          - dc-a588
-          - dg3399
-          - dg-tn3568
-          - dlfr100
-          - e20c
-          - e25
-          - eaidk-610
-          - emb3531
-          - fine3399
-          - firefly-rk3399
-          - fmx1-pro
-          - h28k
-          - h66k
-          - h68k
-          - h69k
-          - h88k
-          - h88k-v3
-          - h96-max-m2
-          - hs530r
-          - hugsun-x99
-          - ipc-r
-          - king3399
-          - kylin3399
-          - lckfb-tspi
-          - leez
-          - lx-r3s
-          - mrkaio-m68s
-          - renegade-rk3328
-          - rk3318-box
-          - rock5b
-          - rock5c
-          - ruisen-box
-          - s905
-          - s905-beelink-mini
-          - s905-mxqpro-plus
-          - s905d-ki-pro
-          - s905d-sml5442tw
-          - s905mb
-          - s905w
-          - s905w-w95
-          - s905w-x96-mini
-          - s905w-x96w
-          - s905x
-          - s905x-b860h
-          - s905x-nexbox-a95x
-          - s905x-t95
-          - s905x-tbee
-          - s905x-tx9
-          - s905x2
-          - s905x2-km3
-          - s905x2-x96max-2g
-          - s905x3
-          - s905x3-2101
-          - s905x3-a100
-          - s905x3-a95xf3
-          - s905x3-a95xf3-gb
-          - s905x3-b
-          - s905x3-h96max
-          - s905x3-ip1001m
-          - s905x3-q1
-          - s905x3-q2
-          - s905x3-tx3
-          - s905x3-tx3-bz
-          - s905x3-ugoosx3
-          - s905x3-whale
-          - s905x3-x88-pro-x3
-          - s905x3-x96air
-          - s905x3-x96air-gb
-          - s905x3-x96max
-          - s905x2-hg680fj
-          - s912
-          - s912-h96pro-plus
-          - s912-m8s-pro
-          - s912-nexbox-a1
-          - s912-nexbox-a2
-          - s912-onecloudpro
-          - s912-phicomm-t1
-          - s912-t95z-plus
-          - s912-tx8-max
-          - s912-tx9-pro-2g
-          - s912-tx9-pro-3g
-          - s912-x92
-          - s912-zyxq-fake
-          - s922x
-          - s922x-ct2000
-          - s922x-gtking
-          - s922x-gtkingpro-h
-          - s922x-odroid-n2
-          - s922x-reva
-          - s922x-ugoos-am6
-          - seewo-sv21
-          - smart-am40
-          - smart-am60
-          - station-m1
-          - station-m2
-          - sv-33a6x
-          - swan1-w28
-          - sw799
-          - tb-ls3399
-          - tn3399
-          - tpm312
-          - tqc-a01
-          - tvi3315a
-          - vplus
-          - xiaobao
-          - yskj
-          - zcube1-max
-          - zk-r39a
-          - zysj
-      include_docker:
-        description: "是否编译 Docker 插件"
+      openwrt_version:
+        description: "选择OpenWrt版本"
         required: true
-        default: 'no'
+        default: "23.05.3"
         type: choice
         options:
-          - 'yes'
-          - 'no'
-      enable_store:
-        description: "集成 store 商店"
-        required: false
-        type: boolean
-        default: true
-      skip_imagebuilder:
-        description: "直接使用底包快速构建固件, 忽略自定义插件 ----（跳过 ImageBuilder）"
-        required: false
-        default: false
-        type: boolean
-      replace_banner:
-        description: "替换为 ImmortalWrt 的 banner 信息"
-        required: false
-        default: false
-        type: boolean
-      rootfs_partsize:
-        description: "软件包大小（1G 固定）"
+          - 21.02.7
+          - 22.03.6
+          - 23.05.3
+          - snapshot
+      openwrt_target:
+        description: "选择目标架构"
         required: true
-        default: "1024"
+        default: "armsr/armv8"
         type: choice
         options:
-          - "1024"
+          - armsr/armv8
+          - x86/64
+          - ramips/mt7621
+          - bcm27xx/bcm2711
+          - mediatek/mt7622
       builder_name:
         description: "设置打包作者的名称"
         required: true
-        default: "wukongdaily"
+        default: "openwrt-builder"
 
 jobs:
-  build:
+  build_openappfilter:
     runs-on: ubuntu-22.04
+    name: 编译OpenAppFilter并生成IPK文件
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v3
-
-      - name: 设置可执行权限
-        run: chmod +x ${{ github.workspace }}/n1/build.sh
-
-      - name: 获取当前时间（用于命名）
-        id: get_time
-        run: echo "current_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
-
-      - name: 启用 Store 集成
+      - name: 检查系统环境
         run: |
-          if [ "${{ github.event.inputs.enable_store }}" = "true" ]; then
-            echo 'CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-store"' >> shell/custom-packages.sh
-            echo "✅ 已追加 luci-app-store"
-          else
-            echo "❎ 未启用 luci-app-store"
-          fi
+          echo "系统信息: $(uname -a)"
+          echo "可用磁盘空间: $(df -h /)"
 
-      - name: 处理 banner 信息替换
-        if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
-        run: |
-          mkdir -p files/etc/uci-defaults
-          cp n1/99-banner.sh files/etc/uci-defaults/ || echo "⚠️ banner文件不存在，跳过替换"
-
-      - name: 强制集成 OpenAppFilter 源码并确认配置
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
-        run: |
-          echo "✅ 强制下载 OpenAppFilter 源码"
-          mkdir -p ${{ github.workspace }}/package/OpenAppFilter
-          # 增加错误处理，确保克隆成功
-          if ! git clone --depth 1 https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter; then
-            echo "⚠️ 首次克隆失败，尝试再次克隆"
-            git clone --depth 1 https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
-          fi
-          echo "✅ 已下载 OpenAppFilter 源码，文件列表："
-          ls -la ${{ github.workspace }}/package/OpenAppFilter || echo "⚠️ OpenAppFilter目录为空"
-          
-          # 确保配置文件存在
-          touch ${{ github.workspace }}/n1/imm.config
-          
-          # 强制添加配置选项
-          echo "CONFIG_PACKAGE_luci-app-oaf=y" >> ${{ github.workspace }}/n1/imm.config
-          echo "CONFIG_PACKAGE_open-app-filter=y" >> ${{ github.workspace }}/n1/imm.config
-          echo "CONFIG_PACKAGE_oaf=y" >> ${{ github.workspace }}/n1/imm.config
-          echo "CONFIG_PACKAGE_kmod-oaf=y" >> ${{ github.workspace }}/n1/imm.config
-          echo "✅ 已强制添加 OpenAppFilter 配置选项"
-
-      - name: 构建根文件系统（含强制编译OpenAppFilter）
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
-        run: |
-          echo "✅ 开始构建，强制包含 OpenAppFilter 所有组件"
-          profiles="generic"
-          include_docker="${{ github.event.inputs.include_docker }}"
-          rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
-
-          IFS=',' read -r -a profile_array <<< "$profiles"
-
-          for profile in "${profile_array[@]}"; do
-            echo "Building for profile: $profile"
-
-            # 确保输出目录存在
-            mkdir -p ${{ github.workspace }}/bin
-            
-            docker run --rm -i \
-              --user root \
-              -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
-              -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
-              -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
-              -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
-              -v "${{ github.workspace }}/n1/banner:/home/build/immortalwrt/files/mnt/banner" \
-              -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
-              -v "${{ github.workspace }}/n1/build.sh:/home/build/immortalwrt/build.sh" \
-              -v "${{ github.workspace }}/package/OpenAppFilter:/home/build/immortalwrt/package/OpenAppFilter" \
-              -e PROFILE=$profile \
-              -e INCLUDE_DOCKER=$include_docker \
-              -e ROOTFS_PARTSIZE=$rootfs_partsize \
-              -e CONFIG_PACKAGE_luci-app-oaf=y \
-              -e CONFIG_PACKAGE_open-app-filter=y \
-              -e CONFIG_PACKAGE_oaf=y \
-              -e CONFIG_PACKAGE_kmod-oaf=y \
-              immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
-                cd /home/build/immortalwrt && \
-                # 执行构建命令
-                make image V=s && \
-                # 创建插件收集目录
-                mkdir -p /home/build/immortalwrt/bin/oaf-collected && \
-                # 收集所有相关插件
-                find /home/build/immortalwrt/bin -iname '*oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-collected/ \; && \
-                find /home/build/immortalwrt/bin -iname '*filter*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-collected/ \; && \
-                find /home/build/immortalwrt/bin -iname '*kmod-oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-collected/ \; && \
-                # 显示收集结果
-                echo '收集到的OpenAppFilter相关插件：' && \
-                ls -la /home/build/immortalwrt/bin/oaf-collected/
-              " || echo "⚠️ 构建过程中出现警告，继续执行"
-          done
-
-      - name: 安装fdupes用于去重
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+      - name: 安装编译依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y fdupes
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib gettext git libncurses5-dev libssl-dev python3-distutils \
+            rsync unzip zlib1g-dev file wget curl
 
-      - name: 强制查找并复制所有OpenAppFilter相关插件
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
-        id: find_oaf
+      - name: 获取当前时间（用于版本命名）
+        id: get_time
+        run: echo "current_date=$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: 克隆OpenWrt源码
+        id: clone_openwrt
         run: |
-          # 创建插件存储目录
-          mkdir -p ${{ github.workspace }}/oaf-final
-          echo "✅ 开始在所有目录中查找插件"
-          
-          # 查找所有相关插件
-          find ${{ github.workspace }} -iname '*oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-final/ \;
-          find ${{ github.workspace }} -iname '*filter*.ipk' -exec cp {} ${{ github.workspace }}/oaf-final/ \;
-          find ${{ github.workspace }} -iname '*kmod-oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-final/ \;
-          
-          # 去重处理
-          fdupes -dN ${{ github.workspace }}/oaf-final/ || echo "⚠️ 无重复文件或去重工具执行警告"
-          
-          # 显示结果
-          echo "✅ 最终收集到的插件文件："
-          ls -la ${{ github.workspace }}/oaf-final/
-          
-          # 统计数量
-          OAF_COUNT=$(ls -1 ${{ github.workspace }}/oaf-final/*.ipk 2>/dev/null | wc -l)
-          if [ $OAF_COUNT -eq 0 ]; then
-            echo "❌ 未找到任何OpenAppFilter相关插件"
-            echo "oaf_found=false" >> $GITHUB_OUTPUT
+          OPENWRT_VERSION=${{ github.event.inputs.openwrt_version }}
+          if [ "$OPENWRT_VERSION" = "snapshot" ]; then
+            git clone https://github.com/openwrt/openwrt.git openwrt
           else
-            echo "✅ 成功找到 $OAF_COUNT 个OpenAppFilter相关插件"
-            echo "oaf_found=true" >> $GITHUB_OUTPUT
-            echo "oaf_path=${{ github.workspace }}/oaf-final" >> $GITHUB_OUTPUT
-            echo "oaf_count=$OAF_COUNT" >> $GITHUB_OUTPUT
+            git clone -b v$OPENWRT_VERSION https://github.com/openwrt/openwrt.git openwrt
           fi
+          cd openwrt
+          echo "OPENWRT_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "openwrt_dir=$(pwd)" >> $GITHUB_OUTPUT
 
-      - name: 下载预构建的 rootfs.tar.gz
-        if: ${{ github.event.inputs.skip_imagebuilder == 'true' }}
+      - name: 更新 feeds 并安装依赖
         run: |
-          echo "📦 正在下载预构建 rootfs"
-          mkdir -p bin/targets/armsr/armv8
-          if ! curl -L -o bin/targets/armsr/armv8/openwrt-armvirt-64-default-rootfs.tar.gz \
-            https://github.com/wukongdaily/AutoBuildImmortalWrt/releases/download/rootfs/immortalwrt-24.10.2-armsr-armv8-generic-rootfs.tar.gz; then
-            echo "⚠️ 下载失败，尝试备用链接"
-            curl -L -o bin/targets/armsr/armv8/openwrt-armvirt-64-default-rootfs.tar.gz \
-              https://github.com/ophub/amlogic-s9xxx-openwrt/releases/download/archive/immortalwrt-armvirt-64-default-rootfs.tar.gz
-          fi
+          cd ${{ steps.clone_openwrt.outputs.openwrt_dir }}
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-      - name: 查找 rootfs.tar.gz 所在路径（完整逻辑）
-        id: find_rootfs
+      - name: 集成OpenAppFilter源码
         run: |
-          # 初始化变量
-          ROOTFS_FILE=""
+          cd ${{ steps.clone_openwrt.outputs.openwrt_dir }}
+          echo "✅ 克隆OpenAppFilter源码"
+          git clone https://github.com/destan19/OpenAppFilter.git package/OpenAppFilter
           
-          # 1. 在标准路径查找
-          echo "🔍 在标准路径查找rootfs.tar.gz"
-          ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" 2>/dev/null | head -n1)
-          
-          # 2. 如果未找到，扩大搜索范围
-          if [ -z "$ROOTFS_FILE" ] || [ ! -f "$ROOTFS_FILE" ]; then
-            echo "🔍 扩大范围查找rootfs.tar.gz"
-            ROOTFS_FILE=$(find ${{ github.workspace }} -type f -name "*rootfs.tar.gz" 2>/dev/null | head -n1)
-          fi
-          
-          # 3. 最终检查
-          if [ -z "$ROOTFS_FILE" ] || [ ! -f "$ROOTFS_FILE" ]; then
-            echo "❌ 找不到rootfs.tar.gz文件"
-            exit 1
-          else
-            echo "✅ 找到rootfs文件: $ROOTFS_FILE"
-            echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 打包为 ophub 固件
-        uses: ophub/amlogic-s9xxx-openwrt@main
-        id: package
-        with:
-          openwrt_path: ${{ steps.find_rootfs.outputs.file }}
-          openwrt_board: ${{ inputs.openwrt_board }}
-          openwrt_kernel: ${{ inputs.openwrt_kernel }}
-          auto_kernel: true
-          kernel_repo: "ophub/kernel"
-          kernel_usage: flippy
-          builder_name: ${{ inputs.builder_name }}
-
-      - name: 重命名固件文件
-        id: rename
-        run: |
-          set -e
-          MODEL=${{ inputs.openwrt_board }}
-          CURRENT_DATE="${{ steps.get_time.outputs.current_date }}"
-          PACKAGED_OUTPUT_PATH=${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}
-          
-          # 查找固件文件
-          IMG_FILE_FULL=""
-          if [ -d "$PACKAGED_OUTPUT_PATH" ]; then
-            IMG_FILE_FULL=$(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz" | head -n1)
-          fi
-          
-          # 扩大搜索范围
-          if [ -z "$IMG_FILE_FULL" ] || [ ! -f "$IMG_FILE_FULL" ]; then
-            echo "🔍 扩大范围查找固件文件"
-            IMG_FILE_FULL=$(find ${{ github.workspace }} -type f -name "*.img.gz" | head -n1)
-          fi
-          
-          # 最终检查
-          if [ -z "$IMG_FILE_FULL" ] || [ ! -f "$IMG_FILE_FULL" ]; then
-            echo "❌ 找不到固件文件"
+          # 检查源码是否克隆成功
+          if [ ! -d "package/OpenAppFilter" ]; then
+            echo "❌ 克隆OpenAppFilter失败"
             exit 1
           fi
           
-          # 重命名
-          NEW_NAME="immortalwrt-${CURRENT_DATE}-${MODEL}.img.gz"
-          NEW_FILE_PATH="${{ github.workspace }}/$NEW_NAME"
-          cp -f "$IMG_FILE_FULL" "$NEW_FILE_PATH"
-          
-          echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
-          echo "packaged_output_path=${{ github.workspace }}" >> $GITHUB_OUTPUT
-          set +e
+          echo "✅ OpenAppFilter源码结构:"
+          ls -la package/OpenAppFilter
 
-      - name: 上传固件及所有OpenAppFilter插件
+      - name: 配置编译选项（仅编译OpenAppFilter）
+        run: |
+          cd ${{ steps.clone_openwrt.outputs.openwrt_dir }}
+          
+          # 加载目标架构默认配置
+          TARGET=${{ github.event.inputs.openwrt_target }}
+          echo "配置目标架构: $TARGET"
+          echo "$TARGET" > .target
+          ./scripts/target-metadata.pl < .target | ./scripts/kconfig.pl > .config
+          
+          # 启用必要的内核选项
+          echo "CONFIG_NETFILTER=y" >> .config
+          echo "CONFIG_NETFILTER_NETLINK=y" >> .config
+          echo "CONFIG_IP6_NF_IPTABLES=y" >> .config
+          echo "CONFIG_IP_NF_IPTABLES=y" >> .config
+          
+          # 配置OpenAppFilter为模块编译（确保生成IPK）
+          echo "CONFIG_PACKAGE_luci-app-oaf=m" >> .config
+          echo "CONFIG_PACKAGE_open-app-filter=m" >> .config
+          echo "CONFIG_PACKAGE_oaf=m" >> .config
+          echo "CONFIG_PACKAGE_kmod-oaf=m" >> .config
+          
+          # 保存配置
+          make defconfig
+          
+          # 显示配置摘要
+          echo "✅ 编译配置摘要:"
+          grep "CONFIG_PACKAGE_.*oaf" .config
+
+      - name: 单独编译OpenAppFilter
+        id: compile_oaf
+        run: |
+          cd ${{ steps.clone_openwrt.outputs.openwrt_dir }}
+          
+          # 开始编译，启用多线程加速
+          echo "✅ 开始编译OpenAppFilter..."
+          make package/OpenAppFilter/compile V=s -j$(nproc)
+          
+          # 创建IPK收集目录
+          mkdir -p ${{ github.workspace }}/oaf-ipk
+          
+          # 查找并收集所有相关IPK文件
+          echo "✅ 查找生成的IPK文件..."
+          find bin/ -name "*oaf*.ipk" -exec cp {} ${{ github.workspace }}/oaf-ipk/ \;
+          find bin/ -name "*open-app-filter*.ipk" -exec cp {} ${{ github.workspace }}/oaf-ipk/ \;
+          
+          # 检查是否生成了IPK文件
+          IPK_COUNT=$(ls -1 ${{ github.workspace }}/oaf-ipk/*.ipk 2>/dev/null | wc -l)
+          if [ $IPK_COUNT -eq 0 ]; then
+            echo "❌ 未生成任何OpenAppFilter IPK文件"
+            exit 1
+          else
+            echo "✅ 成功生成 $IPK_COUNT 个IPK文件"
+            echo "ipk_count=$IPK_COUNT" >> $GITHUB_OUTPUT
+            echo "ipk_dir=${{ github.workspace }}/oaf-ipk" >> $GITHUB_OUTPUT
+          fi
+          
+          # 显示生成的文件列表
+          echo "✅ 生成的IPK文件列表:"
+          ls -la ${{ github.workspace }}/oaf-ipk/
+
+      - name: 生成IPK文件信息
+        run: |
+          # 创建文件信息清单
+          echo "OpenAppFilter IPK Files (Build: ${{ steps.get_time.outputs.current_date }})" > ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+          echo "OpenWrt Version: ${{ github.event.inputs.openwrt_version }}" >> ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+          echo "Target Architecture: ${{ github.event.inputs.openwrt_target }}" >> ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+          echo "OpenWrt Commit: ${{ env.OPENWRT_COMMIT }}" >> ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+          echo "Files generated: ${{ steps.compile_oaf.outputs.ipk_count }}" >> ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+          echo "" >> ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+          echo "File list:" >> ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+          ls -1 ${{ steps.compile_oaf.outputs.ipk_dir }}/*.ipk >> ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+          
+          # 显示清单内容
+          echo "✅ IPK文件信息清单:"
+          cat ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
+
+      - name: 上传IPK文件到GitHub Releases
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: build-${{ steps.get_time.outputs.current_date }}-${{ github.run_id }}
-          name: ImmortalWrt ${{ steps.get_time.outputs.current_date }} for ${{ inputs.openwrt_board }}
+          tag_name: oaf-build-${{ steps.get_time.outputs.current_date }}
+          name: OpenAppFilter IPK (${{ steps.get_time.outputs.current_date }})
           body: |
-            ## 构建信息
-            - 构建日期：${{ steps.get_time.outputs.current_date }}
-            - 设备型号：${{ inputs.openwrt_board }}
-            - 内核版本：${{ inputs.openwrt_kernel }}
-            - 包含插件：OpenAppFilter全套组件（oaf、filter、kmod-oaf相关）
+            ## OpenAppFilter IPK 构建结果
+            - 构建时间: ${{ steps.get_time.outputs.current_date }}
+            - OpenWrt版本: ${{ github.event.inputs.openwrt_version }}
+            - 目标架构: ${{ github.event.inputs.openwrt_target }}
+            - 生成文件数量: ${{ steps.compile_oaf.outputs.ipk_count }}
+            - OpenWrt源码Commit: ${{ env.OPENWRT_COMMIT }}
             
-            ## 插件说明
-            包含所有带oaf、filter和kmod-oaf关键字的IPK包，共 ${{ steps.find_oaf.outputs.oaf_count || 0 }} 个文件
+            这些IPK文件可直接通过OpenWrt的opkg命令安装
           files: |
-            ${{ steps.rename.outputs.packaged_output_path }}/${{ steps.rename.outputs.new_name }}
-            ${{ steps.find_oaf.outputs.oaf_path }}/*.ipk
+            ${{ steps.compile_oaf.outputs.ipk_dir }}/*.ipk
+            ${{ steps.compile_oaf.outputs.ipk_dir }}/README.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: 构建状态报告
+
+      - name: 构建总结
         if: always()
         run: |
           echo "## 构建总结"
-          echo "- 固件文件: ${{ steps.rename.outputs.packaged_output_path }}/${{ steps.rename.outputs.new_name }}"
-          if [ "${{ steps.find_oaf.outputs.oaf_found }}" = "true" ]; then
-            echo "- OpenAppFilter插件: 成功收集 ${{ steps.find_oaf.outputs.oaf_count }} 个文件"
-          else
-            echo "- OpenAppFilter插件: 未找到相关文件"
+          echo "- 构建状态: ${{ job.status }}"
+          echo "- 构建时间: ${{ steps.get_time.outputs.current_date }}"
+          echo "- 生成IPK数量: ${{ steps.compile_oaf.outputs.ipk_count || 0 }}"
+          if [ "${{ steps.compile_oaf.outputs.ipk_count || 0 }}" -gt 0 ]; then
+            echo "- IPK文件位置: ${{ steps.compile_oaf.outputs.ipk_dir }}"
+            echo "- 可在Releases中下载生成的IPK文件"
           fi
     
