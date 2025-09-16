@@ -17,7 +17,7 @@ on:
       openwrt_board:
         description: "选择设备型号"
         required: false
-        default: "a311d-oes"
+        default: "fine3399"
         type: choice
         options:
           - a311d
@@ -331,7 +331,7 @@ jobs:
             echo "当前工作目录路径：$(pwd)"
           fi
 
-      - name: 重命名 .img.gz 文件（时间+型号命名规则）
+      - name: 重命名 .img.gz 文件（时间+型号命名规则+权限修复）
         id: rename
         run: |
           set -x  # 开启调试模式
@@ -391,12 +391,16 @@ jobs:
           echo "找到的 .img.gz 文件完整路径: $IMG_FILE_FULL"
           ls -l "$IMG_FILE_FULL" || echo "无法获取文件信息"
           
-          # 基于时间和型号构建新文件名（核心变更）
+          # 核心修复：修改目标路径权限为可写
+          echo "尝试修改路径 $PACKAGED_OUTPUT_PATH 的权限为可写"
+          sudo chmod -R 777 "$PACKAGED_OUTPUT_PATH"
+          
+          # 基于时间和型号构建新文件名
           # 格式：immortalwrt-YYYYMMDD-型号.img.gz
           NEW_NAME="immortalwrt-${CURRENT_DATE}-${MODEL}.img.gz"
           NEW_FILE_PATH="$PACKAGED_OUTPUT_PATH/$NEW_NAME"
           
-          # 检查目标路径是否可写
+          # 检查目标路径是否可写（修复后二次确认）
           if [ -w "$PACKAGED_OUTPUT_PATH" ]; then
             echo "尝试重命名文件：从 $IMG_FILE_FULL 到 $NEW_FILE_PATH"
             # 使用cp+rm代替mv，避免跨文件系统问题
@@ -412,8 +416,19 @@ jobs:
               exit 1
             fi
           else
-            echo "错误：路径 $PACKAGED_OUTPUT_PATH 不可写，无法重命名文件"
-            exit 1
+            echo "错误：路径 $PACKAGED_OUTPUT_PATH 仍不可写，无法重命名文件"
+            # 终极方案：复制到工作目录并重命名
+            echo "尝试将文件复制到工作目录并重命名"
+            WORKDIR="${{ github.workspace }}"
+            cp -f "$IMG_FILE_FULL" "$WORKDIR/$NEW_NAME"
+            if [ -f "$WORKDIR/$NEW_NAME" ]; then
+              echo "文件已成功复制到工作目录: $WORKDIR/$NEW_NAME"
+              echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
+              echo "packaged_output_path=$WORKDIR" >> $GITHUB_OUTPUT
+            else
+              echo "终极方案执行失败，无法完成文件重命名"
+              exit 1
+            fi
           fi
           set +x  # 关闭调试模式
 
