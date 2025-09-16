@@ -341,10 +341,12 @@ jobs:
       - name: 查找 rootfs.tar.gz 所在路径
         id: find_rootfs
         run: |
-          # 修正find命令的引号使用
-          ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "rootfs.tar.gz" | head -n1)
-          echo "✅ Found: $ROOTFS_FILE"
-          if [ -z "$ROOTFS_FILE" ] || [ ! -f "$ROOTFS_FILE" ]; then
-            echo "❌ 找不到 rootfs.tar.gz 文件，尝试其他路径"
-            ROOTFS_FILE=$(find ${{ github.workspace }} -type f -name "rootfs.tar.gz" | head -n1)
-            if [ -
+          # 先在指定目录查找
+          ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "rootfs.tar.gz" 2>/dev/null | head -n1)
+          if [ -n "$ROOTFS_FILE" ] && [ -f "$ROOTFS_FILE" ]; then
+            echo "✅ Found in specified directory: $ROOTFS_FILE"
+            echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          # 扩大范围查找
+          ROOTFS_FILE=$(find ${{ github.work
