@@ -17,7 +17,7 @@ on:
       openwrt_board:
         description: "选择设备型号"
         required: false
-        default: "a311d-oes"
+        default: "fine3399"  # 默认型号设置为fine3399
         type: choice
         options:
           - a311d
@@ -234,17 +234,23 @@ jobs:
 
       - name: 处理 banner 信息替换
         if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
-        run: cp n1/99-banner.sh files/etc/uci-defaults/
+        run: |
+          # 确保目标目录存在
+          mkdir -p files/etc/uci-defaults
+          cp n1/99-banner.sh files/etc/uci-defaults/
 
       - name: 强制集成 OpenAppFilter 源码并确认配置
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           echo "✅ 强制下载 OpenAppFilter 源码"
           mkdir -p ${{ github.workspace }}/package/OpenAppFilter
-          # 强制克隆最新源码，确保获取完整插件
-          git clone --depth 1 https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
+          # 强制克隆最新源码，增加超时设置
+          git clone --depth 1 --timeout 300 https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
           echo "✅ 已下载 OpenAppFilter 源码，文件列表："
           ls -la ${{ github.workspace }}/package/OpenAppFilter
+          
+          # 确保配置文件存在
+          touch ${{ github.workspace }}/n1/imm.config
           
           # 强制添加配置选项到.config，确保编译所有相关组件
           echo "CONFIG_PACKAGE_luci-app-oaf=y" >> ${{ github.workspace }}/n1/imm.config
@@ -266,6 +272,9 @@ jobs:
           for profile in "${profile_array[@]}"; do
             echo "Building for profile: $profile"
 
+            # 创建输出目录确保挂载成功
+            mkdir -p ${{ github.workspace }}/bin
+            
             docker run --rm -i \
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
@@ -285,9 +294,7 @@ jobs:
               -e CONFIG_PACKAGE_kmod-oaf=y \
               immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
                 cd /home/build/immortalwrt && \
-                # 强制更新配置，确保OpenAppFilter组件被包含
-                make defconfig && \
-                # 开始编译并显示详细输出
+                # 直接编译，不使用defconfig
                 make image V=s && \
                 # 创建专用目录保存插件
                 mkdir -p /home/build/immortalwrt/bin/oaf-collected && \
@@ -300,6 +307,10 @@ jobs:
                 ls -la /home/build/immortalwrt/bin/oaf-collected/
               "
           done
+
+      - name: 安装fdupes用于去重
+        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+        run: sudo apt-get update && sudo apt-get install -y fdupes
 
       - name: 强制查找并复制所有OpenAppFilter相关插件
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
@@ -331,6 +342,7 @@ jobs:
             echo "✅ 成功找到 $OAF_COUNT 个OpenAppFilter相关插件"
             echo "oaf_found=true" >> $GITHUB_OUTPUT
             echo "oaf_path=${{ github.workspace }}/oaf-final" >> $GITHUB_OUTPUT
+            echo "oaf_count=$OAF_COUNT" >> $GITHUB_OUTPUT
           fi
 
       - name: 下载预构建的 rootfs.tar.gz
@@ -347,8 +359,12 @@ jobs:
           ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" | head -n1)
           echo "✅ Found: $ROOTFS_FILE"
           if [ ! -f "$ROOTFS_FILE" ]; then
-            echo "❌ 找不到 rootfs.tar.gz 文件"
-            exit 1
+            echo "❌ 找不到 rootfs.tar.gz 文件，尝试其他路径"
+            ROOTFS_FILE=$(find ${{ github.workspace }} -type f -name "*rootfs.tar.gz" | head -n1)
+            if [ ! -f "$ROOTFS_FILE" ]; then
+              echo "❌ 完全找不到 rootfs.tar.gz 文件"
+              exit 1
+            fi
           fi
           echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
 
@@ -372,14 +388,25 @@ jobs:
           CURRENT_DATE="${{ steps.get_time.outputs.current_date }}"
           PACKAGED_OUTPUT_PATH=${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}
           
-          # 查找固件文件
-          IMG_FILE_FULL=$(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz" | head -n1 || true)
+          # 查找固件文件，增加容错机制
+          IMG_FILE_FULL=""
+          if [ -d "$PACKAGED_OUTPUT_PATH" ]; then
+            IMG_FILE_FULL=$(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz" | head -n1 || true)
+          fi
+          
+          # 如果未找到，扩大搜索范围
           if [ -z "$IMG_FILE_FULL" ]; then
-            echo "尝试从默认路径查找固件"
+            echo "尝试从工作目录查找固件"
             IMG_FILE_FULL=$(find ${{ github.workspace }} -type f -name "*.img.gz" | head -n1)
           fi
           
-          # 重命名逻辑
+          # 检查是否找到固件
+          if [ -z "$IMG_FILE_FULL" ] || [ ! -f "$IMG_FILE_FULL" ]; then
+            echo "❌ 找不到固件文件"
+            exit 1
+          fi
+          
+          # 重命名逻辑，确保输出到工作目录
           NEW_NAME="immortalwrt-${CURRENT_DATE}-${MODEL}.img.gz"
           NEW_FILE_PATH="${{ github.workspace }}/$NEW_NAME"
           cp -f "$IMG_FILE_FULL" "$NEW_FILE_PATH"
@@ -408,13 +435,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
-      - name: 插件收集状态报告
+      - name: 构建状态报告
         if: always()
         run: |
+          echo "## 构建总结"
+          echo "- 固件文件: ${{ steps.rename.outputs.packaged_output_path }}/${{ steps.rename.outputs.new_name }}"
           if [ "${{ steps.find_oaf.outputs.oaf_found }}" = "true" ]; then
-            echo "✅ OpenAppFilter插件收集成功"
-            ls -la ${{ steps.find_oaf.outputs.oaf_path }}
+            echo "- OpenAppFilter插件: 成功收集 ${{ steps.find_oaf.outputs.oaf_count }} 个文件"
           else
-            echo "❌ OpenAppFilter插件收集失败，请检查构建日志"
+            echo "- OpenAppFilter插件: 未找到相关文件"
           fi
     
