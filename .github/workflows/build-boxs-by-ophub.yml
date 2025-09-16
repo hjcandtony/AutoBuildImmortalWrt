@@ -310,10 +310,20 @@ jobs:
           kernel_usage: flippy
           builder_name: ${{ inputs.builder_name }}
 
+      - name: 调试ophub动作输出
+        run: |
+          echo "PACKAGED_OUTPUTPATH: ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
+          echo "所有输出变量: ${{ toJSON(steps.package.outputs) }}"
+
       - name: 调试打包输出路径
         run: |
           echo "打包输出路径: ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
-          ls -l ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}
+          if [ -d "${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}" ]; then
+            ls -l "${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
+          else
+            echo "路径不存在，当前工作目录内容："
+            ls -l
+          fi
 
       - name: 重命名 .img.gz 文件
         id: rename
@@ -325,8 +335,13 @@ jobs:
           
           # 检查路径是否存在
           if [ ! -d "$PACKAGED_OUTPUT_PATH" ]; then
-            echo "错误：打包输出路径 $PACKAGED_OUTPUT_PATH 不存在"
-            exit 1
+            echo "错误：打包输出路径 $PACKAGED_OUTPUT_PATH 不存在，尝试默认路径"
+            PACKAGED_OUTPUT_PATH="${{ github.workspace }}/output"
+            echo "使用默认路径: $PACKAGED_OUTPUT_PATH"
+            if [ ! -d "$PACKAGED_OUTPUT_PATH" ]; then
+              echo "错误：默认路径 $PACKAGED_OUTPUT_PATH 也不存在"
+              exit 1
+            fi
           fi
           
           # 查找 .img.gz 文件
@@ -359,6 +374,4 @@ jobs:
             - 作者：${{ inputs.builder_name }}
             - 集成组件：Docker(${{ inputs.include_docker }})、Store(${{ inputs.enable_store }})、OpenAppFilter
           files: |
-            ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}/*.img.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            ${{ steps
