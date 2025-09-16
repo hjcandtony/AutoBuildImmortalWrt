@@ -223,9 +223,6 @@ jobs:
         id: get_time
         run: echo "current_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
 
-      - name: 调试工作区内容（初始）
-        run: ls -R
-
       - name: 启用 Store 集成
         run: |
           if [ "${{ github.event.inputs.enable_store }}" == "true" ]; then
@@ -239,20 +236,27 @@ jobs:
         if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
         run: cp n1/99-banner.sh files/etc/uci-defaults/
 
-      - name: 集成 OpenAppFilter 源码
+      - name: 强制集成 OpenAppFilter 源码并确认配置
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
-          echo "✅ 开始下载 OpenAppFilter 源码"
+          echo "✅ 强制下载 OpenAppFilter 源码"
           mkdir -p ${{ github.workspace }}/package/OpenAppFilter
-          git clone https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
-          echo "✅ 已下载 OpenAppFilter 源码"
-          # 显示下载的源码文件
+          # 强制克隆最新源码，确保获取完整插件
+          git clone --depth 1 https://github.com/destan19/OpenAppFilter.git ${{ github.workspace }}/package/OpenAppFilter
+          echo "✅ 已下载 OpenAppFilter 源码，文件列表："
           ls -la ${{ github.workspace }}/package/OpenAppFilter
+          
+          # 强制添加配置选项到.config，确保编译所有相关组件
+          echo "CONFIG_PACKAGE_luci-app-oaf=y" >> ${{ github.workspace }}/n1/imm.config
+          echo "CONFIG_PACKAGE_open-app-filter=y" >> ${{ github.workspace }}/n1/imm.config
+          echo "CONFIG_PACKAGE_oaf=y" >> ${{ github.workspace }}/n1/imm.config
+          echo "CONFIG_PACKAGE_kmod-oaf=y" >> ${{ github.workspace }}/n1/imm.config
+          echo "✅ 已强制添加 OpenAppFilter 配置选项"
 
-      - name: 构建 Radxa 及其他板卡的根文件系统（ImmortalWrt）
+      - name: 构建根文件系统（含强制编译OpenAppFilter）
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
-          echo "✅ 使用 ImageBuilder 构建 rootfs（含 OpenAppFilter）"
+          echo "✅ 开始构建，强制包含 OpenAppFilter 所有组件"
           profiles="generic"
           include_docker="${{ github.event.inputs.include_docker }}"
           rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
@@ -281,39 +285,52 @@ jobs:
               -e CONFIG_PACKAGE_kmod-oaf=y \
               immortalwrt/imagebuilder:armsr-armv8-openwrt-24.10.2 /bin/bash -c "
                 cd /home/build/immortalwrt && \
+                # 强制更新配置，确保OpenAppFilter组件被包含
+                make defconfig && \
+                # 开始编译并显示详细输出
                 make image V=s && \
-                # 保存OpenAppFilter相关ipk包到指定目录
-                mkdir -p /home/build/immortalwrt/bin/oaf-packages && \
-                find /home/build/immortalwrt/bin -name 'luci-app-oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-packages/ \; && \
-                find /home/build/immortalwrt/bin -name 'open-app-filter*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-packages/ \; && \
-                find /home/build/immortalwrt/bin -name 'oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-packages/ \; && \
-                find /home/build/immortalwrt/bin -name 'kmod-oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-packages/ \;
+                # 创建专用目录保存插件
+                mkdir -p /home/build/immortalwrt/bin/oaf-collected && \
+                # 强制收集所有相关插件
+                find /home/build/immortalwrt/bin -iname '*oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-collected/ \; && \
+                find /home/build/immortalwrt/bin -iname '*filter*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-collected/ \; && \
+                find /home/build/immortalwrt/bin -iname '*kmod-oaf*.ipk' -exec cp {} /home/build/immortalwrt/bin/oaf-collected/ \; && \
+                # 显示收集到的插件
+                echo '收集到的OpenAppFilter相关插件：' && \
+                ls -la /home/build/immortalwrt/bin/oaf-collected/
               "
           done
 
-      - name: 定位 OpenAppFilter 插件文件
+      - name: 强制查找并复制所有OpenAppFilter相关插件
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         id: find_oaf
         run: |
-          # 创建插件输出目录
-          mkdir -p ${{ github.workspace }}/oaf-packages
+          # 创建本地插件目录
+          mkdir -p ${{ github.workspace }}/oaf-final
+          echo "✅ 开始在所有目录中查找插件"
           
-          # 查找并复制OpenAppFilter相关ipk包
-          find ${{ github.workspace }}/bin -name 'luci-app-oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-packages/ \;
-          find ${{ github.workspace }}/bin -name 'open-app-filter*.ipk' -exec cp {} ${{ github.workspace }}/oaf-packages/ \;
-          find ${{ github.workspace }}/bin -name 'oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-packages/ \;
-          find ${{ github.workspace }}/bin -name 'kmod-oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-packages/ \;
+          # 强制搜索整个工作区，确保不遗漏任何相关插件
+          find ${{ github.workspace }} -iname '*oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-final/ \;
+          find ${{ github.workspace }} -iname '*filter*.ipk' -exec cp {} ${{ github.workspace }}/oaf-final/ \;
+          find ${{ github.workspace }} -iname '*kmod-oaf*.ipk' -exec cp {} ${{ github.workspace }}/oaf-final/ \;
           
-          # 检查是否找到插件文件
-          OAF_FILES=$(find ${{ github.workspace }}/oaf-packages -type f -name "*.ipk")
-          if [ -z "$OAF_FILES" ]; then
-            echo "警告：未找到OpenAppFilter插件文件"
+          # 去重处理
+          echo "✅ 移除重复文件"
+          fdupes -dN ${{ github.workspace }}/oaf-final/
+          
+          # 检查结果
+          echo "✅ 最终收集到的插件文件："
+          ls -la ${{ github.workspace }}/oaf-final/
+          
+          # 统计文件数量
+          OAF_COUNT=$(ls -1 ${{ github.workspace }}/oaf-final/*.ipk 2>/dev/null | wc -l)
+          if [ $OAF_COUNT -eq 0 ]; then
+            echo "❌ 未找到任何OpenAppFilter相关插件"
             echo "oaf_found=false" >> $GITHUB_OUTPUT
           else
-            echo "找到以下OpenAppFilter插件文件："
-            echo "$OAF_FILES"
+            echo "✅ 成功找到 $OAF_COUNT 个OpenAppFilter相关插件"
             echo "oaf_found=true" >> $GITHUB_OUTPUT
-            echo "oaf_path=${{ github.workspace }}/oaf-packages" >> $GITHUB_OUTPUT
+            echo "oaf_path=${{ github.workspace }}/oaf-final" >> $GITHUB_OUTPUT
           fi
 
       - name: 下载预构建的 rootfs.tar.gz
@@ -335,7 +352,7 @@ jobs:
           fi
           echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
 
-      - name: 打包为 ophub 的 ImmortalWrt（armsr-armv8）
+      - name: 打包为 ophub 固件
         uses: ophub/amlogic-s9xxx-openwrt@main
         id: package
         with:
@@ -347,123 +364,31 @@ jobs:
           kernel_usage: flippy
           builder_name: ${{ inputs.builder_name }}
 
-      - name: 调试ophub动作输出
-        run: |
-          echo "PACKAGED_OUTPUTPATH: ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
-          echo "所有输出变量: ${{ toJSON(steps.package.outputs) }}"
-
-      - name: 调试打包输出路径（详细）
-        run: |
-          echo "打包输出路径: ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
-          if [ -d "${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}" ]; then
-            echo "路径存在，内容如下："
-            ls -l "${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
-          else
-            echo "路径不存在，当前工作目录内容："
-            ls -l
-            echo "当前工作目录路径：$(pwd)"
-          fi
-
-      - name: 重命名 .img.gz 文件（时间+型号命名规则+权限修复）
+      - name: 重命名固件文件
         id: rename
         run: |
-          set -x  # 开启调试模式
+          set -x
           MODEL=${{ inputs.openwrt_board }}
-          CURRENT_DATE="${{ steps.get_time.outputs.current_date }}"  # 获取当前日期（YYYYMMDD格式）
+          CURRENT_DATE="${{ steps.get_time.outputs.current_date }}"
           PACKAGED_OUTPUT_PATH=${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}
-          echo "当前设备型号: $MODEL"
-          echo "当前日期: $CURRENT_DATE"
-          echo "打包输出路径: $PACKAGED_OUTPUT_PATH"
           
-          # 初始化变量
-          IMG_FILE_FULL=""
-          
-          # 检查 ophub 动作输出的路径是否存在
-          if [ ! -d "$PACKAGED_OUTPUT_PATH" ] || [ -z "$PACKAGED_OUTPUT_PATH" ]; then
-            echo "警告：打包输出路径无效，尝试查找可能的输出目录"
-            # 尝试从常见输出位置查找 .img.gz 文件
-            POTENTIAL_DIRS=(
-              "${{ github.workspace }}/output" 
-              "${{ github.workspace }}/bin" 
-              "${{ github.workspace }}"
-              "${{ github.workspace }}/firmware"
-              "${{ github.workspace }}/build"
-            )
-            FOUND_IMG=false
-            for dir in "${POTENTIAL_DIRS[@]}"; do
-              echo "检查目录: $dir"
-              if [ -d "$dir" ]; then
-                # 查找所有 .img.gz 文件
-                IMG_FILES=($(find "$dir" -type f -name "*.img.gz"))
-                if [ ${#IMG_FILES[@]} -gt 0 ]; then
-                  IMG_FILE_FULL="${IMG_FILES[0]}"
-                  echo "在 $dir 中找到 .img.gz 文件: $IMG_FILE_FULL"
-                  PACKAGED_OUTPUT_PATH=$(dirname "$IMG_FILE_FULL")
-                  FOUND_IMG=true
-                  break
-                fi
-              else
-                echo "目录 $dir 不存在，跳过"
-              fi
-            done
-            if [ "$FOUND_IMG" = "false" ]; then
-              echo "错误：所有潜在目录中均未找到 .img.gz 文件"
-              exit 1
-            fi
-          else
-            # 路径存在，查找所有 .img.gz 文件
-            IMG_FILES=($(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz"))
-            if [ ${#IMG_FILES[@]} -eq 0 ]; then
-              echo "错误：在 $PACKAGED_OUTPUT_PATH 中未找到 .img.gz 文件"
-              exit 1
-            fi
-            IMG_FILE_FULL="${IMG_FILES[0]}"
+          # 查找固件文件
+          IMG_FILE_FULL=$(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz" | head -n1 || true)
+          if [ -z "$IMG_FILE_FULL" ]; then
+            echo "尝试从默认路径查找固件"
+            IMG_FILE_FULL=$(find ${{ github.workspace }} -type f -name "*.img.gz" | head -n1)
           fi
           
-          # 打印找到的 .img.gz 文件详细信息
-          echo "找到的 .img.gz 文件完整路径: $IMG_FILE_FULL"
-          ls -l "$IMG_FILE_FULL" || echo "无法获取文件信息"
-          
-          # 修改目标路径权限为可写
-          echo "尝试修改路径 $PACKAGED_OUTPUT_PATH 的权限为可写"
-          sudo chmod -R 777 "$PACKAGED_OUTPUT_PATH"
-          
-          # 基于时间和型号构建新文件名
+          # 重命名逻辑
           NEW_NAME="immortalwrt-${CURRENT_DATE}-${MODEL}.img.gz"
-          NEW_FILE_PATH="$PACKAGED_OUTPUT_PATH/$NEW_NAME"
+          NEW_FILE_PATH="${{ github.workspace }}/$NEW_NAME"
+          cp -f "$IMG_FILE_FULL" "$NEW_FILE_PATH"
           
-          # 检查目标路径是否可写（修复后二次确认）
-          if [ -w "$PACKAGED_OUTPUT_PATH" ]; then
-            echo "尝试重命名文件：从 $IMG_FILE_FULL 到 $NEW_FILE_PATH"
-            cp -f "$IMG_FILE_FULL" "$NEW_FILE_PATH" && rm -f "$IMG_FILE_FULL"
-            
-            # 检查重命名是否成功
-            if [ -f "$NEW_FILE_PATH" ]; then
-              echo "重命名成功为: $NEW_NAME"
-              echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
-              echo "packaged_output_path=$PACKAGED_OUTPUT_PATH" >> $GITHUB_OUTPUT
-            else
-              echo "错误：重命名操作执行后，目标文件不存在"
-              exit 1
-            fi
-          else
-            echo "错误：路径 $PACKAGED_OUTPUT_PATH 仍不可写，无法重命名文件"
-            # 终极方案：复制到工作目录并重命名
-            echo "尝试将文件复制到工作目录并重命名"
-            WORKDIR="${{ github.workspace }}"
-            cp -f "$IMG_FILE_FULL" "$WORKDIR/$NEW_NAME"
-            if [ -f "$WORKDIR/$NEW_NAME" ]; then
-              echo "文件已成功复制到工作目录: $WORKDIR/$NEW_NAME"
-              echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
-              echo "packaged_output_path=$WORKDIR" >> $GITHUB_OUTPUT
-            else
-              echo "终极方案执行失败，无法完成文件重命名"
-              exit 1
-            fi
-          fi
-          set +x  # 关闭调试模式
+          echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
+          echo "packaged_output_path=${{ github.workspace }}" >> $GITHUB_OUTPUT
+          set +x
 
-      - name: 上传固件及OpenAppFilter插件到 GitHub Releases
+      - name: 上传固件及所有OpenAppFilter插件
         uses: softprops/action-gh-release@v2.2.1
         with:
           tag_name: build-${{ steps.get_time.outputs.current_date }}-${{ github.run_id }}
@@ -473,15 +398,23 @@ jobs:
             - 构建日期：${{ steps.get_time.outputs.current_date }}
             - 设备型号：${{ inputs.openwrt_board }}
             - 内核版本：${{ inputs.openwrt_kernel }}
-            - 作者：${{ inputs.builder_name }}
-            - 集成组件：Docker(${{ inputs.include_docker }})、Store(${{ inputs.enable_store }})、OpenAppFilter
+            - 包含插件：OpenAppFilter全套组件（oaf、filter、kmod-oaf相关）
             
-            ## 包含文件
-            - 固件文件：immortalwrt-${{ steps.get_time.outputs.current_date }}-${{ inputs.openwrt_board }}.img.gz
-            - OpenAppFilter插件：luci-app-oaf及相关依赖包
+            ## 插件说明
+            包含所有带oaf、filter和kmod-oaf关键字的IPK包，共 ${{ steps.find_oaf.outputs.oaf_count || 0 }} 个文件
           files: |
             ${{ steps.rename.outputs.packaged_output_path }}/${{ steps.rename.outputs.new_name }}
             ${{ steps.find_oaf.outputs.oaf_path }}/*.ipk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: 插件收集状态报告
+        if: always()
+        run: |
+          if [ "${{ steps.find_oaf.outputs.oaf_found }}" = "true" ]; then
+            echo "✅ OpenAppFilter插件收集成功"
+            ls -la ${{ steps.find_oaf.outputs.oaf_path }}
+          else
+            echo "❌ OpenAppFilter插件收集失败，请检查构建日志"
+          fi
     
