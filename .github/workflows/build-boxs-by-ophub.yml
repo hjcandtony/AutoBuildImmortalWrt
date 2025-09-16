@@ -347,6 +347,7 @@ jobs:
               if [ -n "$IMG_FILE" ]; then
                 echo "在 $dir 中找到 .img.gz 文件: $IMG_FILE"
                 PACKAGED_OUTPUT_PATH=$(dirname "$IMG_FILE")
+                IMG_FILE_FULL="$IMG_FILE"
                 FOUND_IMG=true
                 break
               fi
@@ -355,17 +356,20 @@ jobs:
               echo "错误：所有潜在目录中均未找到 .img.gz 文件"
               exit 1
             fi
+          else
+            # 路径存在，直接查找 .img.gz 文件
+            IMG_FILE_FULL=$(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz" | head -n1)
+            if [ -z "$IMG_FILE_FULL" ]; then
+              echo "错误：在 $PACKAGED_OUTPUT_PATH 中未找到 .img.gz 文件"
+              exit 1
+            fi
           fi
           
-          # 查找 .img.gz 文件
-          IMG_FILE=$(find "$PACKAGED_OUTPUT_PATH" -type f -name "*.img.gz" | head -n1)
-          if [ -z "$IMG_FILE" ]; then
-            echo "错误：在 $PACKAGED_OUTPUT_PATH 中未找到 .img.gz 文件"
-            exit 1
-          fi
-          
-          FILENAME=$(basename "$IMG_FILE")
+          FILENAME=$(basename "$IMG_FILE_FULL")
           KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+')
           if [[ -z "$KERNEL_VERSION" ]]; then
             KERNEL_VERSION="unknown"
-            echo "警告：无法从文件名 $FILENAME 中提取内核版本，使用默认值
+            echo "警告：无法从文件名 $FILENAME 中提取内核版本，使用默认值 $KERNEL_VERSION"
+          fi
+          
+          NEW_NAME="immortalwrt-24.10.2-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
