@@ -219,7 +219,7 @@ jobs:
       - name: 设置可执行权限
         run: chmod +x ${{ github.workspace }}/n1/build.sh
 
-      - name: 调试工作区内容
+      - name: 调试工作区内容（初始）
         run: ls -R
 
       - name: 启用 Store 集成
@@ -315,17 +315,19 @@ jobs:
           echo "PACKAGED_OUTPUTPATH: ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
           echo "所有输出变量: ${{ toJSON(steps.package.outputs) }}"
 
-      - name: 调试打包输出路径
+      - name: 调试打包输出路径（详细）
         run: |
           echo "打包输出路径: ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
           if [ -d "${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}" ]; then
+            echo "路径存在，内容如下："
             ls -l "${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}"
           else
             echo "路径不存在，当前工作目录内容："
             ls -l
+            echo "当前工作目录路径：$(pwd)"
           fi
 
-      - name: 重命名 .img.gz 文件
+      - name: 重命名 .img.gz 文件（增强容错）
         id: rename
         run: |
           MODEL=${{ inputs.openwrt_board }}
@@ -333,13 +335,24 @@ jobs:
           echo "当前设备型号: $MODEL"
           echo "打包输出路径: $PACKAGED_OUTPUT_PATH"
           
-          # 检查路径是否存在
+          # 检查 ophub 动作输出的路径是否存在
           if [ ! -d "$PACKAGED_OUTPUT_PATH" ]; then
-            echo "错误：打包输出路径 $PACKAGED_OUTPUT_PATH 不存在，尝试默认路径"
-            PACKAGED_OUTPUT_PATH="${{ github.workspace }}/output"
-            echo "使用默认路径: $PACKAGED_OUTPUT_PATH"
-            if [ ! -d "$PACKAGED_OUTPUT_PATH" ]; then
-              echo "错误：默认路径 $PACKAGED_OUTPUT_PATH 也不存在"
+            echo "警告：打包输出路径 $PACKAGED_OUTPUT_PATH 不存在，尝试查找可能的输出目录"
+            # 尝试从常见输出位置查找 .img.gz 文件
+            POTENTIAL_DIRS=("${{ github.workspace }}/output" "${{ github.workspace }}/bin" "${{ github.workspace }}")
+            FOUND_IMG=false
+            for dir in "${POTENTIAL_DIRS[@]}"; do
+              echo "检查目录: $dir"
+              IMG_FILE=$(find "$dir" -type f -name "*.img.gz" | head -n1)
+              if [ -n "$IMG_FILE" ]; then
+                echo "在 $dir 中找到 .img.gz 文件: $IMG_FILE"
+                PACKAGED_OUTPUT_PATH=$(dirname "$IMG_FILE")
+                FOUND_IMG=true
+                break
+              fi
+            done
+            if [ "$FOUND_IMG" = "false" ]; then
+              echo "错误：所有潜在目录中均未找到 .img.gz 文件"
               exit 1
             fi
           fi
@@ -355,25 +368,4 @@ jobs:
           KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+')
           if [[ -z "$KERNEL_VERSION" ]]; then
             KERNEL_VERSION="unknown"
-            echo "警告：无法从文件名 $FILENAME 中提取内核版本，使用默认值 $KERNEL_VERSION"
-          fi
-          
-          NEW_NAME="immortalwrt-24.10.2-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
-          mv "$IMG_FILE" "$PACKAGED_OUTPUT_PATH/$NEW_NAME"
-          echo "重命名为: $NEW_NAME"
-
-      - name: 上传固件和 OpenAppFilter 到 GitHub Releases
-        uses: softprops/action-gh-release@v2.2.1
-        with:
-          tag_name: ophub
-          name: ImmortalWrt for boxs (含 OpenAppFilter 插件)
-          body: |
-            ## 构建信息
-            - 设备型号：${{ inputs.openwrt_board }}
-            - 内核版本：${{ inputs.openwrt_kernel }}（系统自动适配）
-            - 作者：${{ inputs.builder_name }}
-            - 集成组件：Docker(${{ inputs.include_docker }})、Store(${{ inputs.enable_store }})、OpenAppFilter
-          files: |
-            ${{ steps.package.outputs.PACKAGED_OUTPUTPATH }}/*.img.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            echo "警告：无法从文件名 $FILENAME 中提取内核版本，使用默认值
