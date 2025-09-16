@@ -50,6 +50,7 @@ jobs:
         run: |
           cd istoreos/package
           git clone https://github.com/destan19/OpenAppFilter.git
+          # 先进入OpenAppFilter目录再执行sed命令
           cd OpenAppFilter
           # 适配iStoreOS的Makefile调整
           sed -i 's/$(PKG_NAME)-$(PKG_VERSION)/$(PKG_NAME)/g' Makefile
