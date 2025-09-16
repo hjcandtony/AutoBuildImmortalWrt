@@ -50,8 +50,12 @@ jobs:
         run: |
           cd istoreos/package
           git clone https://github.com/destan19/OpenAppFilter.git
-          # 先进入OpenAppFilter目录再执行sed命令
           cd OpenAppFilter
+          # 检查Makefile是否存在
+          if [ ! -f "Makefile" ]; then
+            echo "❌ OpenAppFilter目录下未找到Makefile文件，克隆可能失败"
+            exit 1
+          fi
           # 适配iStoreOS的Makefile调整
           sed -i 's/$(PKG_NAME)-$(PKG_VERSION)/$(PKG_NAME)/g' Makefile
           sed -i 's/include \$(TOPDIR)\/rules.mk/include \$(TOPDIR)\/rules.mk\nPKG_KERNEL_VERSION:=6.1.151/g' Makefile
